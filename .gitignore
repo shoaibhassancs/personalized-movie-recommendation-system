@@ -1,0 +1,48 @@
+# PMRS .gitignore (BUILD_PLAN Step 1). Patterns with a leading slash only match at the repo root,
+# so folders such as tests/data/ or src/pmrs/data/ are NOT hidden.
+
+# Downloaded datasets (MovieLens must be fetched by script, never committed)
+/data/
+
+# Secrets and local environment files (keep the template)
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+
+# Fitted model / serving artifacts
+/models/
+*.joblib
+
+# MLflow tracking data
+/mlruns/
+/mlartifacts/
+
+# Python caches and tooling output
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+.ipynb_checkpoints/
+.coverage
+htmlcov/
+
+# Generated build and dependency directories
+.venv/
+/dist/
+/build/
+*.egg-info/
+node_modules/
+/frontend/dist/
+
+# Private planning notes (owner decision D-012)
+/project-notes/
+
+# Logs
+*.log
+
+# OS and editor files
+.DS_Store
+.idea/
