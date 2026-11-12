@@ -22,7 +22,8 @@ movies; the owner as a learner.
 - User dashboard (recommended, trending, popular, recently added by release year, favourite
   genres, watchlist, recent activity) and a system analytics page (counts, popular movies and
   genres, rating distribution, recommendation engagement from real in-app events)
-- EDA, leakage-safe offline evaluation (Precision/Recall/NDCG/MAP@K, RMSE/MAE, coverage,
+- EDA, offline evaluation under a per-user temporal holdout (not globally leakage-safe; see
+  DECISIONS D-021) (Precision/Recall/NDCG/MAP@K, RMSE/MAE, coverage,
   diversity) with confidence intervals and a results report; MLflow for evaluation runs
 - PostgreSQL, FastAPI, React, Docker Compose, CI, one cloud deployment, README, model card
 

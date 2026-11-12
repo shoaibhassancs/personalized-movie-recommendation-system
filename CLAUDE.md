@@ -15,7 +15,10 @@ These four are approved as **working documents**; their recommendations are **pr
 defaults** until the step or gate that decides them. Do not copy them into this file.
 
 ## Current state
-Python 3.12 uv project with dev tools and an empty `pmrs` package. Check
+Python 3.12 uv project: `pmrs.data` (download, loaders, validation), `pmrs.split` (per-user
+holdout, ID maps, sparse matrix, evaluation groups, feasibility tables), tests, and an EDA
+notebook; MovieLens data in `data/raw/` (git-ignored). No models yet. Step 5 is built; Gate 1
+awaits owner approval. Check
 `project-notes/BUILD_LOG.md` for what is actually built; never assume a step is done unless the
 log says it was run and verified.
 
@@ -72,12 +75,20 @@ It is the owner's readable record of progress, written like the reference
   is used by both the evaluation harness and the API.
 
 ## ML rules
-- Evaluation uses a shared chronological split for all users. Nothing at or after the applicable
-  cutoff (ratings or timestamped tags) may fit an evaluated model or content feature. Validation
-  is for tuning only; test is read once, after refit on train + validation.
-- Candidate set excludes the user's pre-cutoff items; held-out items stay eligible.
-- If the split is infeasible, use only an owner-approved fallback with a narrowed claim; never
-  call a per-user holdout globally leakage-safe.
+- Evaluation uses the owner-approved **per-user temporal holdout** (D-021): each user's latest
+  ceil(10%) ratings are test and the preceding ceil(10%) are validation; ties stay together. The
+  shared global split was infeasible on this data (D-020). **Claim limit:** results support only
+  "methods compared under the same per-user holdout protocol". Never call them globally
+  leakage-safe or predictive of future behaviour: models are fitted once and so still see other
+  users' later ratings and tags.
+- Within the protocol: a user's own pre-cutoff data only for their history; a tag is usable only
+  if earlier than its author's own cutoff; validation is for tuning only; test is read once,
+  after refit on train + validation. A fixed-seed 20% of users stays out of every fit (cold-start
+  simulation, reported as a simulation, not real new-user evidence).
+- Candidate set, warm users: excludes the user's known pre-cutoff items; held-out items stay
+  eligible. Cold-start simulation users: excludes **only the ratings actually revealed** for that
+  history size (0, 3, 5, 10); hidden train, validation and test ratings never filter candidates
+  (D-023).
 - Fixed seeds wherever randomness affects results. Report uncertainty; claims stay proportionate
   to the evidence (offline, small dataset, development-grade data).
 
@@ -95,5 +106,8 @@ uv sync               # install pinned versions from uv.lock into .venv
 uv run pytest         # run tests in tests/
 uv run ruff check     # lint
 uv run mypy           # type-check src/
+uv run ruff format    # format code (add --check to only check)
+uv run python -m pmrs.data.download   # fetch MovieLens into data/raw/ (already done once)
+uv run python -m pmrs.split           # build the split, print and save feasibility tables (Step 5)
 ```
 Add new commands here only once they work.
