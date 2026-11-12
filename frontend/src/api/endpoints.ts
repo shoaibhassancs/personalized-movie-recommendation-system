@@ -1,12 +1,19 @@
 import { request } from "./client";
 import type {
+  DashboardOut,
+  EngagementOut,
   FlagKind,
   HistoryPage,
   MovieDetail,
   MoviePage,
   MovieState,
+  RatingDistributionOut,
+  RecommendationsOut,
+  Strategy,
+  SummaryOut,
   TokenOut,
   User,
+  Movie,
 } from "./types";
 
 export const api = {
@@ -40,4 +47,15 @@ export const api = {
     request<MoviePage>("/me/watchlist", { query: { page }, signal }),
   history: (page: number, signal?: AbortSignal) =>
     request<HistoryPage>("/me/history", { query: { page }, signal }),
+  // Phase 5B. Each recommendations/dashboard call makes the API log "served" events,
+  // so pages call these only through the once-per-visit cache in ../served.ts.
+  recommendations: (strategy: Strategy, k = 10) =>
+    request<RecommendationsOut>("/me/recommendations", { query: { strategy, k } }),
+  dashboard: () => request<DashboardOut>("/me/dashboard"),
+  analyticsSummary: () => request<SummaryOut>("/analytics/summary"),
+  analyticsPopular: (limit = 10) =>
+    request<Movie[]>("/analytics/popular", { query: { limit } }),
+  analyticsRatings: () =>
+    request<RatingDistributionOut>("/analytics/ratings-distribution"),
+  analyticsEngagement: () => request<EngagementOut>("/analytics/engagement"),
 };

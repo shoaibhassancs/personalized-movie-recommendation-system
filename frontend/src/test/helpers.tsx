@@ -3,7 +3,13 @@ import { MemoryRouter } from "react-router";
 import { vi } from "vitest";
 import { AppRoutes } from "../App";
 import { AuthProvider } from "../auth/AuthContext";
-import type { Movie, MovieState, User } from "../api/types";
+import type {
+  DashboardOut,
+  Movie,
+  MovieState,
+  RecommendationsOut,
+  User,
+} from "../api/types";
 
 export interface Call {
   method: string;
@@ -75,3 +81,71 @@ export const movie: Movie = {
   rating_count: 215,
   poster: { initials: "TS", hue: 120 },
 };
+
+export const MODEL_NOTICE =
+  "These lists come from the serving model, fitted on all MovieLens data. It has no " +
+  "separate quality metric. The Step 16 offline results describe a different, " +
+  "separately fitted model, compare methods under one holdout protocol only, and do " +
+  "not show that these lists suit you.";
+
+export function recOut(overrides: Partial<RecommendationsOut> = {}): RecommendationsOut {
+  return {
+    strategy: "hybrid",
+    branch: "many_ratings",
+    branch_reason: "You have 12 ratings, so the full hybrid blend is used.",
+    score_kind: "blend",
+    rating_count: 12,
+    items: [
+      {
+        movie,
+        score: 0.4321,
+        explanation: "Similar to movies you rated highly.",
+        source: "content",
+        state: emptyState,
+      },
+      {
+        movie: { ...movie, id: 2, title: "Jumanji (1995)" },
+        score: 0.3,
+        explanation: "Popular with people who rated similar movies.",
+        source: "item_knn",
+        state: { ...emptyState, watchlist: true },
+      },
+    ],
+    notes: [],
+    served_events_logged: 2,
+    model_notice: MODEL_NOTICE,
+    ...overrides,
+  };
+}
+
+export function dashboardOut(overrides: Partial<DashboardOut> = {}): DashboardOut {
+  const page = { items: [movie], page: 1, page_size: 10, total: 1 };
+  return {
+    recommended: recOut(),
+    trending: {
+      source: "app_activity",
+      window_start: "2026-10-01T00:00:00Z",
+      window_end: "2026-10-31T00:00:00Z",
+      window_days: 30,
+      note: "Ratings and actions by registered users in the last 30 days.",
+      items: [{ movie, interactions: 4 }],
+    },
+    popular: [movie],
+    recent_releases: [{ ...movie, id: 3, title: "Newest Film (2024)" }],
+    genres: ["Comedy"],
+    watchlist: page,
+    activity: {
+      items: [
+        {
+          movie,
+          state: { ...emptyState, rating: 4 },
+          last_activity: "2026-10-30T00:00:00Z",
+        },
+      ],
+      page: 1,
+      page_size: 10,
+      total: 1,
+    },
+    ...overrides,
+  };
+}

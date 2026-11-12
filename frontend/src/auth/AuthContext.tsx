@@ -8,8 +8,9 @@ import {
   type ReactNode,
 } from "react";
 import { api } from "../api/endpoints";
-import { ApiError, setUnauthorizedHandler } from "../api/client";
+import { ApiError, isAbort, setUnauthorizedHandler } from "../api/client";
 import type { User } from "../api/types";
+import { clearServed } from "../served";
 import { clearToken, getToken, msUntilExpiry, saveToken } from "./tokenStore";
 
 type Status = "loading" | "anonymous" | "authenticated";
@@ -37,6 +38,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const expire = useCallback((message: string | null) => {
     clearToken();
+    clearServed(); // nothing cached for this person survives logging out
     setUser(null);
     setStatus("anonymous");
     setNotice(message);
@@ -59,7 +61,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         setStatus("authenticated");
       })
       .catch((error: unknown) => {
-        if (error instanceof DOMException && error.name === "AbortError") return;
+        if (isAbort(error)) return;
         // A 401 is already handled (and keeps its message); any other failure
         // means we cannot confirm the session, so treat it as signed out.
         if (!(error instanceof ApiError && error.status === 401)) expire(null);

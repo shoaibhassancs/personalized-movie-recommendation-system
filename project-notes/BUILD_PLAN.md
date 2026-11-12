@@ -327,23 +327,32 @@ typescript, a small chart library, vitest + testing-library.
 **Step 26. Auth, profile and genre onboarding.** Needs: 25. Done when: register → pick genres
   → land on the dashboard, verified in a browser.
   *Built 2026-11-12 (5A): lands on the catalogue until the dashboard exists (5B), owner-approved.
-  Verified against the real API in a simulated browser (jsdom); the real-browser check is NOT RUN.*
+  Verified against the real API in a simulated browser (jsdom); the owner's real-browser walkthrough is complete (owner-reported). Landing moved to the dashboard in 5B (D-043).*
 **Step 27. Catalogue and movie detail.** Search, filters, rating/like/watchlist/watched
   controls. Needs: 21, 22, 26. Done when: each control changes state and persists after reload.
   *Built 2026-11-12 (5A): every control changes state and persists after reload against the real API
-  (jsdom). Real-browser check NOT RUN. D-042: the detail page records `viewed` (no `acted`).*
+  (jsdom); the owner's browser walkthrough is complete (owner-reported). D-042: the detail page records `viewed` (no `acted`).*
 **Step 28. Recommendations page.** Strategy switch (hybrid by default; the API serves five: hybrid, popularity, content, item-kNN, SVD),
   explanation text, cold-start message. Needs: 23, 27. Done when: a fresh account and a
   heavily-rating account show clearly different, explained lists.
+  *Built 2026-11-12 (5B, D-043): different, explained lists for a no-rating and a 12-rating account verified
+  against the real API on `pmrs_test` (jsdom, Strict Mode: one serving per visit). Seeing it in a real
+  browser: NOT RUN by me; owner to review.*
 **Step 29. User dashboard.** Needs: 24, 28. Done when: all seven dashboard items in section F
   render with real data.
+  *Built 2026-11-12 (5B): seven panels render with real data in the walkthrough; logged-in people land
+  here. Real-browser look: NOT RUN.*
 **Step 30. Analytics dashboard.** Needs: 24. Done when: all section G items render; empty states
   are honest. Frontend tests for key components; manual browser walkthrough recorded.
+  *Built 2026-11-12 (5B): login-only; MovieLens and app separate; hand-built charts with text tables, no
+  new dependency; figures matched the database. The genre breakdown is deferred (owner-approved, no API
+  endpoint). The manual real-browser walkthrough for 5B is still to be done by the owner.*
 
 (Each of steps 25–30 states its own goal/method/output when its phase starts; they are grouped
 here because they are small and share one tool chain.)
 
 **Gate 5:** a person can complete the nine-point final deliverable list locally.
+  *Status 2026-11-12: Steps 25-30 are built; Gate 5 awaits the owner's browser walkthrough of 5B and review.*
 
 ## Phase 6: Delivery (Steps 31–35)
 

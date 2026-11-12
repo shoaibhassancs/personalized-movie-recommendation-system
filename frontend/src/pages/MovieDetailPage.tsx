@@ -6,7 +6,7 @@ import { MovieControls } from "../components/MovieControls";
 import { ErrorNotice, InfoNotice } from "../components/Notice";
 import { Poster } from "../components/Poster";
 import { useLoad } from "../components/useLoad";
-import { ratingText } from "../components/MovieCard";
+import { RatingLine } from "../components/MovieCard";
 import type { MovieDetail, MovieState } from "../api/types";
 
 export function MovieDetailPage() {
@@ -42,17 +42,21 @@ export function MovieDetailPage() {
         <Poster poster={movie.poster} large />
         <div>
           <h1>{movie.title}</h1>
-          <p className="muted">{movie.genres.join(" · ") || "No genres listed"}</p>
-          <p>{ratingText(movie)}</p>
+          <p className="card-genres">{movie.genres.join(" · ") || "No genres listed"}</p>
+          <RatingLine movie={movie} />
           <p className="muted small">
             Average and count include MovieLens ratings and ratings made in this app.
           </p>
         </div>
       </div>
       {movie.tags.length > 0 && (
-        <p>
-          <strong>Tags:</strong> {movie.tags.join(", ")}
-        </p>
+        <ul className="badges tags" aria-label="Tags">
+          {movie.tags.map((tag) => (
+            <li key={tag} className="badge">
+              {tag}
+            </li>
+          ))}
+        </ul>
       )}
       {movie.me ? (
         <MovieControls movieId={movie.id} state={movie.me} onState={setState} />

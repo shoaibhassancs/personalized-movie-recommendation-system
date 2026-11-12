@@ -5,6 +5,7 @@ import { ErrorNotice } from "../components/Notice";
 import { MovieCard } from "../components/MovieCard";
 import { Pager } from "../components/Pager";
 import { Poster } from "../components/Poster";
+import { StateBadges } from "../components/StateBadges";
 import { useLoad } from "../components/useLoad";
 
 export function WatchlistPage() {
@@ -40,22 +41,6 @@ export function WatchlistPage() {
   );
 }
 
-function badges(s: {
-  rating: number | null;
-  liked: boolean;
-  disliked: boolean;
-  watchlist: boolean;
-  watched: boolean;
-}): string[] {
-  const parts: string[] = [];
-  if (s.rating !== null) parts.push(`Rated ${s.rating}`);
-  if (s.liked) parts.push("Liked");
-  if (s.disliked) parts.push("Disliked");
-  if (s.watchlist) parts.push("On watchlist");
-  if (s.watched) parts.push("Watched");
-  return parts.length ? parts : ["Viewed"];
-}
-
 export function HistoryPage() {
   const [page, setPage] = useState(1);
   const { data, error, loading } = useLoad(`h${page}`, (s) => api.history(page, s));
@@ -75,13 +60,7 @@ export function HistoryPage() {
                   <Poster poster={movie.poster} />
                   <div>
                     <h3>{movie.title}</h3>
-                    <p className="badges">
-                      {badges(state).map((b) => (
-                        <span key={b} className="badge">
-                          {b}
-                        </span>
-                      ))}
-                    </p>
+                    <StateBadges state={state} fallback="Viewed" />
                     <p className="muted small">
                       {new Date(last_activity).toLocaleDateString()}
                     </p>

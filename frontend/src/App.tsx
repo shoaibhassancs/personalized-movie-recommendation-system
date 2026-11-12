@@ -10,6 +10,9 @@ import {
 } from "react-router";
 import { AuthProvider, useAuth } from "./auth/AuthContext";
 import { RequireAuth } from "./auth/RequireAuth";
+import { AnalyticsPage } from "./pages/AnalyticsPage";
+import { DashboardPage } from "./pages/DashboardPage";
+import { RecommendationsPage } from "./pages/RecommendationsPage";
 import { AccountDeletedPage, AccountPage, NotFoundPage } from "./pages/AccountPage";
 import { CataloguePage } from "./pages/CataloguePage";
 import { HistoryPage, WatchlistPage } from "./pages/ListPages";
@@ -18,49 +21,65 @@ import { MovieDetailPage } from "./pages/MovieDetailPage";
 import { OnboardingPage } from "./pages/OnboardingPage";
 import { RegisterPage } from "./pages/RegisterPage";
 
+/** Where "/" goes: logged-in people land on the dashboard, visitors on the catalogue. */
+function Home() {
+  const { status } = useAuth();
+  if (status === "loading") return <p role="status">Checking your session…</p>;
+  return <Navigate to={status === "authenticated" ? "/dashboard" : "/movies"} replace />;
+}
+
 function Layout() {
   const { status, user, logout } = useAuth();
   const navigate = useNavigate();
   return (
     <>
       <header className="top">
-        <Link to="/movies" className="brand">
-          PMRS Movies
-        </Link>
-        <span className="pill">Local build</span>
-        <nav aria-label="Main">
-          <NavLink to="/movies">Catalogue</NavLink>
-          {status === "authenticated" ? (
-            <>
-              <NavLink to="/watchlist">Watchlist</NavLink>
-              <NavLink to="/history">History</NavLink>
-              <NavLink to="/account" className="nav-account">
-                Account
-                {user && (
-                  <>
-                    {" · "}
-                    <span className="nav-name">{user.display_name}</span>
-                  </>
-                )}
-              </NavLink>
-              <button
-                type="button"
-                className="secondary small-button"
-                onClick={() => {
-                  logout();
-                  navigate("/movies");
-                }}
-              >
-                Log out
-              </button>
-            </>
-          ) : (
-            <>
-              <NavLink to="/login">Log in</NavLink>
-              <NavLink to="/register">Register</NavLink>
-            </>
-          )}
-        </nav>
+        <div className="top-inner">
+          <Link to="/" className="brand">
+            PMRS Movies
+          </Link>
+          <span className="pill">Local build</span>
+          <nav aria-label="Main">
+            {status === "authenticated" && (
+              <>
+                <NavLink to="/dashboard">Dashboard</NavLink>
+                <NavLink to="/recommendations">Recommendations</NavLink>
+              </>
+            )}
+            <NavLink to="/movies">Catalogue</NavLink>
+            {status === "authenticated" ? (
+              <>
+                <NavLink to="/watchlist">Watchlist</NavLink>
+                <NavLink to="/history">History</NavLink>
+                <NavLink to="/analytics">Analytics</NavLink>
+                <NavLink to="/account" className="nav-account">
+                  Account
+                  {user && (
+                    <>
+                      {" · "}
+                      <span className="nav-name">{user.display_name}</span>
+                    </>
+                  )}
+                </NavLink>
+                <button
+                  type="button"
+                  className="secondary small-button"
+                  onClick={() => {
+                    logout();
+                    navigate("/movies");
+                  }}
+                >
+                  Log out
+                </button>
+              </>
+            ) : (
+              <>
+                <NavLink to="/login">Log in</NavLink>
+                <NavLink to="/register">Register</NavLink>
+              </>
+            )}
+          </nav>
+        </div>
       </header>
       <main>
         <Outlet />
@@ -82,7 +101,7 @@ export function AppRoutes() {
   return (
     <Routes>
       <Route element={<Layout />}>
-        <Route index element={<Navigate to="/movies" replace />} />
+        <Route index element={<Home />} />
         <Route path="movies" element={<CataloguePage />} />
         <Route path="movies/:id" element={<MovieDetailPage />} />
         <Route path="login" element={<LoginPage />} />
@@ -90,6 +109,9 @@ export function AppRoutes() {
         <Route path="account-deleted" element={<AccountDeletedPage />} />
         <Route element={<RequireAuth />}>
           <Route path="onboarding/genres" element={<OnboardingPage />} />
+          <Route path="dashboard" element={<DashboardPage />} />
+          <Route path="recommendations" element={<RecommendationsPage />} />
+          <Route path="analytics" element={<AnalyticsPage />} />
           <Route path="watchlist" element={<WatchlistPage />} />
           <Route path="history" element={<HistoryPage />} />
           <Route path="account" element={<AccountPage />} />

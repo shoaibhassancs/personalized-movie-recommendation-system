@@ -932,3 +932,54 @@ D-041. Change: `POST /movies/{id}/view` no longer calls `record_acted` (the only
 the frontend detail page now calls it once per visit for a logged-in person (best effort; a failure
 does not break the page). No schema, recommender, evaluation or artifact change. Also fixed: the
 catalogue filter boxes now re-fill from the URL on Back, Forward, refresh and shared links.
+
+## D-043 (2026-11-12): Phase 5, chunk 5B (Steps 28-30): recommendations, dashboard, analytics
+Owner decisions (approved in the chunk 5B message):
+- Steps 28, 29 and 30 are built as one chunk.
+- Charts are hand-built and accessible, with a text table beside each; **no dependency was added** (the
+  "small chart library" named in BUILD_PLAN is not used).
+- Logged-in people land on the dashboard (after login and after genre onboarding; `/` goes there);
+  visitors land on the catalogue.
+- Recommendation cards link to the movie page; no inline action buttons. Raw scores are hidden by default
+  and, where shown, sit behind a "Show raw scores" disclosure that names the score kind and says scores
+  are not comparable between methods.
+- The analytics genre breakdown mentioned in `SCOPE.md` is **deferred (owner-approved)**: the API has no
+  such endpoint and no backend work was done for it.
+- The 5A real-browser walkthrough is complete (owner-reported: the owner checked the redesign and likes
+  it). Earlier status lines that called it pending were corrected.
+- Any real-API walkthrough uses only the throwaway `pmrs_test` database; the development database is not
+  connected to. Frontend only; no API, recommender, artifact, evaluation, seed-data, schema, session or
+  external-service change.
+
+Design choices (mine, for review):
+- **One serving request per page visit.** Every recommendations or dashboard call makes the API log one
+  "shown" event per movie, and a request the browser cancels is still served and logged. So
+  `frontend/src/served.ts` keeps one shared promise per (page visit, request), where a visit is one
+  navigation. React Strict Mode's second mount and in-flight duplicates reuse it; a result is reused when
+  the person switches back to a method within the visit; only opening the page afresh, picking a new
+  method or pressing "Get a fresh list" makes a new request. Failures are forgotten so they can be
+  retried; logging out clears everything. A dashboard visit records one serving of its ten suggestions.
+- **Wording.** "Served"/"suggested" only. The API's `branch_reason`, `notes` and `model_notice` are shown
+  word for word. A popularity fallback (0 ratings, 1-10 ratings, or the popularity method) is labelled "not
+  personalised". Served/acted counts are labelled descriptive, with no comparison group, and never as
+  conversion or effect.
+- **Small privacy note on analytics:** app totals are visible to every logged-in person and, with few users,
+  can describe one person.
+- **Back-button caching:** returning to an earlier history entry reuses that visit's result (so no new
+  serving is logged).
+
+Found and fixed while verifying: the abort check `instanceof DOMException` missed a cancelled request
+whose error came from another realm (Node's fetch under the test DOM), so React Strict Mode's cancelled
+first `/me` request logged the person out on a reload. Both places now test the error's name
+(`isAbort`). Browsers were not affected as far as the code shows; the fix only widens the check. This
+touches session-restore code but not session behaviour.
+
+Measured (real API on `pmrs_test`, jsdom, Strict Mode on): a person with no ratings opening the dashboard
+once made exactly 10 shown events; a person with 12 ratings making dashboard, recommendations (hybrid),
+svd, back to hybrid (cached), refresh made hybrid 30 and svd 10 (no duplicates); rating a served movie
+made 1 acted event and opening a movie made none; every figure on the analytics page matched the
+database. Not measured: a real browser.
+
+Limits: the 5B pages have not been seen rendered by me (no screenshot tool); the walkthrough ran in
+jsdom. No load, security or many-user test. `npm audit` was not run. The 5A and 5B text, spacing and
+phone layout were checked by the owner only for 5A.

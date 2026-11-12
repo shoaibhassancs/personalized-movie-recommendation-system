@@ -7,7 +7,7 @@ import { ErrorNotice, InfoNotice } from "../components/Notice";
 export function LoginPage() {
   const { login, notice, clearNotice } = useAuth();
   const navigate = useNavigate();
-  const from = (useLocation().state as { from?: string } | null)?.from ?? "/movies";
+  const from = (useLocation().state as { from?: string } | null)?.from ?? "/dashboard";
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState<string | null>(null);

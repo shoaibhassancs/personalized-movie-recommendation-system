@@ -3,7 +3,7 @@ import userEvent from "@testing-library/user-event";
 import { describe, expect, it } from "vitest";
 import { clearToken, getToken, saveToken } from "../auth/tokenStore";
 import { App } from "../App";
-import { emptyState, mockApi, movie, renderApp, user } from "./helpers";
+import { dashboardOut, emptyState, mockApi, movie, renderApp, user } from "./helpers";
 
 const detail = (me: typeof emptyState | null) => ({ ...movie, tags: ["pixar"], me });
 
@@ -360,20 +360,20 @@ describe("account deletion", () => {
 });
 
 describe("genre onboarding", () => {
-  it("saves chosen genres and moves on to the catalogue", async () => {
+  it("saves chosen genres and moves on to the dashboard", async () => {
     saveToken("tok", 3600);
     const calls = mockApi({
       "GET /me": { body: user },
       "PUT /me/genres": (c) => ({
         body: { ...user, genres: (c.body as { genres: string[] }).genres },
       }),
-      "GET /movies": { body: { items: [], page: 1, page_size: 20, total: 0 } },
+      "GET /me/dashboard": { body: dashboardOut() },
     });
     renderApp("/onboarding/genres");
     await userEvent.click(await screen.findByRole("checkbox", { name: "Comedy" }));
     await userEvent.click(screen.getByRole("checkbox", { name: "Sci-Fi" }));
     await userEvent.click(screen.getByRole("button", { name: "Save and continue" }));
-    expect(await screen.findByRole("heading", { name: "Movies" })).toBeInTheDocument();
+    expect(await screen.findByRole("heading", { name: /Dashboard/ })).toBeInTheDocument();
     expect(calls.find((c) => c.method === "PUT")?.body).toEqual({
       genres: ["Comedy", "Sci-Fi"],
     });

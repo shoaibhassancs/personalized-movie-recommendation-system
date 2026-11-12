@@ -6,6 +6,16 @@ export const API_URL = (import.meta.env.VITE_API_URL ?? "http://127.0.0.1:8000")
   "",
 );
 
+/** A cancelled request. Checked by name, not `instanceof DOMException`, so it also works
+ *  when the error comes from another realm (e.g. Node's fetch under a test DOM). */
+export function isAbort(error: unknown): boolean {
+  return (
+    typeof error === "object" &&
+    error !== null &&
+    (error as { name?: unknown }).name === "AbortError"
+  );
+}
+
 export class ApiError extends Error {
   readonly status: number; // 0 = the API could not be reached
   constructor(status: number, message: string) {
@@ -69,7 +79,7 @@ export async function request<T>(path: string, options: Options = {}): Promise<T
       signal,
     });
   } catch (error) {
-    if (error instanceof DOMException && error.name === "AbortError") throw error;
+    if (isAbort(error)) throw error;
     throw new ApiError(
       0,
       "Cannot reach the API. Is it running, and does its FRONTEND_ORIGIN match this page?",

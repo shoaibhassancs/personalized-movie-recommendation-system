@@ -18,7 +18,7 @@ export function OnboardingPage() {
     setError(null);
     try {
       setUser(await api.setGenres(selected));
-      navigate("/movies", { replace: true });
+      navigate("/dashboard", { replace: true });
     } catch (e) {
       setError(e instanceof ApiError ? e.message : "Could not save your genres.");
       setBusy(false);
@@ -41,7 +41,7 @@ export function OnboardingPage() {
         <button
           type="button"
           className="secondary"
-          onClick={() => navigate("/movies")}
+          onClick={() => navigate("/dashboard")}
           disabled={busy}
         >
           Skip
