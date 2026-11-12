@@ -107,8 +107,10 @@ tests and 75 frontend tests passed.
 
 ## Continuous integration
 `.github/workflows/ci.yml` runs the commands above on GitHub Actions with a throwaway Postgres.
-**It has never run**, and its third-party action references are placeholders until the owner
-approves looking up their commit SHAs (the file says so at the top). A fresh checkout has no
+**It has not passed yet.** Its first GitHub run failed during job setup because the action
+references were placeholders (owner-reported). They are now pinned to full commit SHAs
+(`actions/checkout` v7.0.1, `actions/setup-python` v7.1.0, `actions/setup-node` v7.1.0), but the
+corrected file has not been pushed or re-run, so CI is **NOT VERIFIED**. A fresh checkout has no
 MovieLens data and no artifact, so in CI these **skip (not pass)**: 16 tests in
 `tests/test_api_recommendations.py` and 1 in `tests/test_download.py` (checked by running the
 suite from a copy without data: 277 passed, 17 skipped). So CI cannot exercise real

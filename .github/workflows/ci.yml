@@ -1,12 +1,10 @@
 # Continuous integration (Step 32).
 #
-# STATUS: written, NOT YET RUN. It only runs on GitHub after the owner pushes, and it has
-# never run. Do not describe it as passing until a real run on GitHub shows that.
-#
-# NOT YET PINNED: every `uses:` line below ends in REPLACE_WITH_FULL_COMMIT_SHA. A
-# third-party action must be pinned to a full 40-character commit SHA, and finding the
-# SHA for a version tag means asking GitHub, which needs the owner's approval. Until the
-# placeholders are replaced the workflow will fail at "set up job"; that is intentional.
+# STATUS: corrected locally, NOT YET RE-RUN. The first run on GitHub (owner-reported) failed
+# at "set up job" because the action references were placeholders. They are now pinned to
+# full commit SHAs (version tags in the comments), looked up read-only from the official
+# actions/* repositories on 2026-11-12 as each repository's latest non-prerelease release.
+# The workflow still needs the owner's push and a run before anyone calls it passing.
 #
 # DATA: the MovieLens data and the frozen serving artifact are git-ignored, so they are
 # not in a fresh checkout. Without them these tests SKIP in CI (a skip is NOT a pass):
@@ -39,10 +37,10 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 20
     steps:
-      - uses: actions/checkout@REPLACE_WITH_FULL_COMMIT_SHA # actions/checkout, version tag to be chosen
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
-      - uses: actions/setup-python@REPLACE_WITH_FULL_COMMIT_SHA # actions/setup-python
+      - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
         with:
           python-version: "3.12"
       - name: Install uv (same version as local)
@@ -79,10 +77,10 @@ jobs:
       run:
         working-directory: frontend
     steps:
-      - uses: actions/checkout@REPLACE_WITH_FULL_COMMIT_SHA # actions/checkout
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
-      - uses: actions/setup-node@REPLACE_WITH_FULL_COMMIT_SHA # actions/setup-node
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
           node-version: "22"
       - name: Install locked packages (no audit)

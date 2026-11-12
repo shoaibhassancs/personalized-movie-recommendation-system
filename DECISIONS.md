@@ -1029,3 +1029,15 @@ or build the image with the dev group); (2) the CI workflow's action references 
 until the owner approves looking up their commit SHAs; (3) no code licence, screenshots or deployment URL
 exist and none was invented. Unchanged and binding: the frozen ML core and its claim limit, the local-only
 status of the API, and the serving artifact's lack of any quality metric.
+
+## D-046 (2026-11-12): CI action references pinned to full commit SHAs
+Owner decision. The first GitHub Actions run (owner-reported) failed during job setup because
+`.github/workflows/ci.yml` still held `REPLACE_WITH_FULL_COMMIT_SHA` placeholders (as D-045 had flagged), so
+no check ever ran. The owner approved a read-only lookup from the official `actions/*` repositories. Done
+2026-11-12: the latest non-prerelease releases, each tag resolved to its commit, are `actions/checkout`
+v7.0.1 (`3d3c42e5aac5ba805825da76410c181273ba90b1`), `actions/setup-python` v7.1.0
+(`6d4fd22b20465ccc0f7354476588e8df7c9ca0e0`) and `actions/setup-node` v7.1.0
+(`949feb2413d6458794dcd2491c4babbbce0c15c1`), all published more than two weeks earlier. The workflow now
+uses those SHAs with the tags in comments. Not verified: the new major versions' inputs were not tested
+here, and the workflow has not been re-run. It needs the owner's push; until a run succeeds CI is NOT
+VERIFIED. No Git command was run; no application tests or builds were run for this change.
