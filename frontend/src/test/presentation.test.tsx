@@ -98,6 +98,19 @@ describe("header and local-only warning", () => {
     expect(footer).toHaveTextContent(/no rate\s+limiting or HTTPS/);
   });
 
+  it("shows the MovieLens attribution, citation and non-endorsement in the footer", async () => {
+    clearToken();
+    mockApi({ "GET /movies": { body: page } });
+    renderApp("/movies");
+    await screen.findByText("Toy Story (1995)");
+    const footer = screen.getByRole("contentinfo");
+    expect(footer).toHaveTextContent(/MovieLens \(GroupLens, non-commercial\)/);
+    expect(footer).toHaveTextContent(/Not endorsed by GroupLens/);
+    expect(footer).toHaveTextContent(/Harper and J\. A\. Konstan \(2015\)/);
+    expect(footer).toHaveTextContent(/The MovieLens Datasets: History and\s+Context/);
+    expect(footer).toHaveTextContent("https://doi.org/10.1145/2827872");
+  });
+
   it("labels the account link and offers Log out as a button", async () => {
     saveToken("tok", 3600);
     mockApi({ "GET /me": { body: user }, "GET /movies": { body: page } });

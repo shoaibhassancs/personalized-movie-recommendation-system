@@ -1,10 +1,11 @@
-# Hosting gate (Step 33): NOT APPROVED
+# Deferred hosting notes (Step 33 is deferred for V1, owner decision D-048)
 
-**Status: no cloud deployment is approved, started or decided.** Nothing has been uploaded,
-no account or service exists, and no payment method is used. The budget is a hard $0. Render's
-free plan is the owner's preferred option *if* the whole app fits for $0; that remains a gated
-possibility, not a decision. This file is a checklist for judging it, kept apart from the local
-Docker work.
+**Status: V1 has no public deployment.** Step 33 and the public-hosting hardening are deferred
+(owner-approved, D-048). Nothing has been uploaded, no account or service exists, and no payment
+method is used. The budget is a hard $0. Render's free plan stays a possible *future* option; it was
+never tested. This file is kept as the checklist for judging any future hosting decision, apart from
+the local Docker work. Everything below was written before the deferral and still describes what
+would have to be true first.
 
 ## Verdict on the current records: NO-GO until every gate below passes
 1. **Security** (not built; would reopen the frozen Gate 4 API and needs its own approval):

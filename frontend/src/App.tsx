@@ -91,6 +91,11 @@ function Layout() {
         </p>
         <p>
           Movie data: MovieLens (GroupLens, non-commercial). This is a portfolio project.
+          Not endorsed by GroupLens or the University of Minnesota.
+        </p>
+        <p>
+          Cite: F. M. Harper and J. A. Konstan (2015), The MovieLens Datasets: History and
+          Context, ACM TiiS 5(4), 19:1-19:19. https://doi.org/10.1145/2827872
         </p>
       </footer>
     </>

@@ -1,0 +1,53 @@
+{
+  "chosen_on": "validation period only",
+  "claim": "Methods compared under the same per-user holdout protocol (D-021). This is not globally leakage-safe and not a prediction of future behaviour: models are fitted once and still see other users' ratings and tags dated after a scored user's own cutoff.",
+  "data_hash": "f20145fd606593ee28822a1a5e9931d4bdc8ae752075e456712f0fb98fdf997e",
+  "grid_winner_sha256": "3eb9f692cf1ef337094420b72503a0a12a773b64e7ef34c3e5bb51ccfc8a246a",
+  "hybrid": {
+    "few_max": 10,
+    "few_weights": {
+      "content": 0.0,
+      "item_knn": 0.0,
+      "popularity": 1.0,
+      "svd": 0.0
+    },
+    "genre_weight": 0.6,
+    "many_weights": {
+      "content": 0.35,
+      "item_knn": 0.25,
+      "popularity": 0.15,
+      "svd": 0.25
+    },
+    "popularity_weight": 0.4
+  },
+  "provenance": {
+    "0-rating genre/popularity mix 0.6/0.4": "provisional and untuned (owner decision): MovieLens cannot measure the value of onboarding genre choices",
+    "1-10 ratings rung = pure popularity": "OWNER DECISION based on validation, not a tuning-grid winner: the tuned SVD/popularity blend tied popularity on NDCG@10 with no clear advantage",
+    "cold-start 0/3/5/10 revealed": "OWNER DECISION based on validation: popularity (tied the hybrid at 3 and 5; the hybrid was worse at 10)",
+    "content weights (all 1.0)": "default kept: inconclusive (validation)",
+    "item_knn min_support = 20": "tuning-grid winner (validation); owner: keep 20 for comparison, do not search above 20",
+    "item_knn neighbours / shrinkage": "tuning-grid winner (validation)",
+    "svd factors = 50": "default kept: no grid value was clearly better (validation)",
+    "warm 10+ hybrid weights": "default kept: best alternative inconclusive (validation); owner: keep"
+  },
+  "routing": {
+    "0 ratings": "genre/popularity mix if genres are given, else popularity",
+    "1 to 10 ratings": "popularity (cold-start fallback; includes the cold-start simulation at 3, 5 and 10 revealed)",
+    "11+ ratings": "warm-user hybrid (many_weights)"
+  },
+  "seed": 42,
+  "settings": {
+    "content_weights": {
+      "decade": 1.0,
+      "genres": 1.0,
+      "tags": 1.0,
+      "title": 1.0
+    },
+    "factors": 50,
+    "min_support": 20,
+    "neighbours": 20,
+    "shrinkage": 5.0
+  },
+  "sha256": "e68a7ee613e27719e7369f592ce438cd8fb7b4ff5887a55af4ce39d5eecce2b5",
+  "status": "FROZEN - owner-approved 2026-11-12 (D-031). Settings must not change. Hash covers the settings fields, not this status text. Step 16 (single test read) is the only use."
+}

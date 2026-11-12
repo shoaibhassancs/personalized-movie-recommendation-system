@@ -25,7 +25,7 @@ movies; the owner as a learner.
 - EDA, offline evaluation under a per-user temporal holdout (not globally leakage-safe; see
   DECISIONS D-021) (Precision/Recall/NDCG/MAP@K, RMSE/MAE, coverage,
   diversity) with confidence intervals and a results report; MLflow for evaluation runs
-- PostgreSQL, FastAPI, React, Docker Compose, CI, one cloud deployment, README, model card
+- PostgreSQL, FastAPI, React, Docker Compose (one-command local run), CI, README with screenshots, model card
 
 ## Out of scope (Version 1)
 - TMDB posters/descriptions (API terms conflict with ML use; optional later, display only)
@@ -34,9 +34,14 @@ movies; the owner as a learner.
 - A/B testing infrastructure; social features; mobile app
 - Datasets other than `ml-latest-small` (`ml-1m` cannot be redistributed)
 - Real personal data; any claim of real-world engagement gains or benchmark-level results
+- Public hosting / a live demo and the security hardening it needs (deferred from V1, owner-approved, D-048;
+  Render's free plan remains a possible future option, untested)
 
 ## Key boundaries
-- Non-commercial demo only (MovieLens terms); citation and attribution shown.
+- Non-commercial portfolio project only (MovieLens terms); citation and attribution shown. Whether portfolio
+  use counts as non-commercial is unresolved (owner's call). Ordinary owner-provided portfolio screenshots are
+  allowed (D-049) and keep the normal attribution; the app footer shows attribution, a compact citation and a
+  not-endorsed line.
 - Data is not committed to git; secrets are never committed.
 - Models are fitted offline; a user's new ratings affect their own results immediately but
   do not retrain the models.
@@ -44,4 +49,5 @@ movies; the owner as a learner.
 
 ## Done for Version 1
 All items above working end to end, tests and CI passing, a documented evaluation, a one-command
-local run, and a live non-commercial demo with README and model card.
+local Docker run, and a README with screenshots and a model card. There is **no public deployment**
+(the earlier "live demo" promise is deferred, D-048).

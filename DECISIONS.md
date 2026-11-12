@@ -1006,6 +1006,7 @@ development database was not connected to or changed. The unidentified process t
 port 8000 earlier is no longer running; what it was connected to was never determined.
 
 ## D-045 (2026-11-12): Phase 6 local work approved (Steps 31, 32, 34); cloud deployment not approved
+*[Partly superseded by D-048: Step 33 is no longer a "gated possibility" for V1; it is deferred. The rest of this entry stands as history.]*
 Owner decision. After reviewing the Phase 6 proposal and a revised one for Render's free plan, the owner
 approved **local work only**: Step 31 (local Docker containerisation), Step 32 (the CI workflow file),
 Step 34 (documentation), and local checks that need no Git push. The budget is a strict **$0**: no payment
@@ -1064,3 +1065,85 @@ password hashing (Phase 6B, not approved).
 Base-image digests recorded at pull: python:3.12-slim `sha256:5e2bdb1b0d54...13a4fa5b`, node:22-alpine
 `sha256:1314fb30ec37...88481a`, nginx:stable-alpine `sha256:583b7f2fce1c...19c311` (full values in the build
 log). The build used the moving tags, not these digests.
+
+## D-048 (2026-11-12): V1 has no public deployment; the live-demo promise is deferred
+*[Partly superseded by D-049: the hold on pushing screenshots that show MovieLens-derived content is withdrawn; the open items about the frozen-config file and the UI footer were settled there. The rest stands.]*
+Owner decision. Version 1 will have **no public deployment**. The "live non-commercial demo" deliverable is
+replaced by **README screenshots and clear local Docker run instructions**. Still in scope: local
+containerisation (Step 31), CI (Step 32), documentation (Step 34) and final verification (Step 35).
+**Deferred (owner-approved):** Step 33 (cloud deployment) and the public-hosting hardening it would need
+(login and registration throttling, a cap on concurrent password hashing, a password for account deletion,
+`/docs` off, HTTPS, a registration policy). Render's free plan stays a possible future option; nothing about
+it is decided and it was never tested. The $0 hosting budget is unchanged.
+
+Why (recorded so the deferral is not read as an oversight): V1 is kept at zero hosting cost; free-tier memory
+and database-persistence limits (the owner's notes say 512 MB RAM and a free database that expires after 30
+days; not rechecked against any provider's documentation); the local D-047 test in which an API container
+limited to 512 MB and 0.1 CPU was OOM-killed by eight simultaneous registrations (each Argon2id hash uses
+64 MiB) and took about 3.7-4 minutes to start; the hardening a public API needs; and the unresolved question
+of whether a portfolio demonstration counts as non-commercial under the MovieLens terms. The 512 MB test was
+local and Render was not tested. For a local-only release the OOM result is a public-hosting limitation, not a
+blocker: the local stack applies no memory cap and listens on 127.0.0.1 only.
+
+Superseded, preserved as history (not edited): the "live demo" and "one cloud deployment" promises in
+SCOPE.md, PROJECT_GUIDE.md, ARCHITECTURE.md and BUILD_PLAN.md (updated in place to say deferred), and the
+"gated possibility" wording of D-045. D-037, D-039 and D-041 (local only) remain in force.
+
+Other owner decisions in this entry: the code stays **unlicensed** for now (no licence file is added;
+all rights reserved by default; recorded in the README). Screenshots that show MovieLens-derived titles,
+genres or ratings **must not be pushed publicly** until the owner resolves the MovieLens non-commercial
+question; the owner will supply the screenshots at the end and the README gets one final update then; no
+personal information, secrets, tokens or terminal paths in them. Final verification uses a plain file copy
+that excludes git-ignored files (no Git commands), with a 10 GiB free-disk floor and no Docker pruning. The
+nine-point deliverables list from the original specification could not be found in the project records, so
+the checklist is **reconstructed** from SCOPE.md and the approved plan and labelled that way. CI: the
+GitHub pass (owner-reported) was recorded **before** the `final.py` import change (D-047), so CI needs a
+**rerun after the owner's next push** and is NOT VERIFIED for the current code.
+
+Open, awaiting the owner: (1) approval of the exact frozen-configuration file to make the app's artifact
+reproducible for a fresh reader (shown in the build log; nothing moved or tracked); (2) whether to add the
+full MovieLens citation and a no-endorsement line to the UI footer, which today reads "Movie data: MovieLens
+(GroupLens, non-commercial). This is a portfolio project." (attribution only); (3) the screenshots; (4) the
+licence; (5) the MovieLens non-commercial question. V1 is **not** complete until the screenshots arrive, the
+final README update is made, and the verification status is recorded accurately.
+
+## D-049 (2026-11-12): frozen config tracked for rebuilding; footer citation added; screenshots are ordinary
+*[Its "Not done" paragraph about the rebuild is superseded by D-050: the rebuild was run after the owner waived the disk floor, and passed.]*
+Owner decisions. (1) **The exact frozen configuration, as shown to the owner, is copied to `docs/frozen_config.json`** (2,547 bytes, file
+SHA-256 `40eb05dfa3c125ba47ad643e897e56d1e11e3b5cb991ed89ad9e12388b50acba`). Checked: byte-identical to
+`data/processed/tuning/proposed_frozen_config.json` (`cmp`, matching SHA-256), the settings hash field is still
+`e68a7ee613e27719e7369f592ce438cd8fb7b4ff5887a55af4ce39d5eecce2b5`, and the project's own `check_frozen` accepts the copy. It holds only settings,
+weights, routing and provenance text, the seed and hashes: no raw data, no secrets, no local paths, no fitted artifact. The original stays
+git-ignored and in place (the code reads that path); the README tells a reader to fetch MovieLens, copy this file to that path and run
+`serving build`. (2) **A compact citation and a not-endorsed line were added to the existing app footer** (text only; no routes, behaviour, data or
+design change; one new frontend test). (3) **Ordinary owner-provided portfolio screenshots are not blocked.** This withdraws the D-048 sentence that
+screenshots with MovieLens-derived content must not be pushed publicly. The normal MovieLens attribution and citation stay in the project
+documentation, the footer and the captions, and the licensing note stays: whether a portfolio demonstration is non-commercial remains the owner's
+open question, and the code remains unlicensed. No images were captured or added; placeholders remain in the README.
+
+Not done, and why: the planned **clean-copy rebuild of the serving artifact** (raw data copied in, no artifact, build from tracked source plus this
+config) was **NOT RUN**. Free disk fell from 10.15 GiB to 9.64 GiB during the footer checks, below the owner's 10 GiB floor, for a reason I could not
+identify (my scratch area is 19 MB; Docker's disk image and build cache are large and unpruned, and macOS may have changed too), so I stopped and did
+not start the rebuild. The README therefore marks the rebuild as unverified. The rebuild also needs no download or new dependency; it needs only about
+10 MB and some CPU. GitHub CI is NOT current: its pass predates the `final.py` import change, the footer change and the new test, and it needs a rerun
+after the owner's push. V1 is not complete: screenshots, the final README update, the rebuild verification and the CI rerun remain.
+
+## D-050 (2026-11-12): clean-copy serving-artifact rebuild verified; disk-floor waiver recorded
+Owner decision: the owner waived the 10 GiB free-disk stop for this one task (no Docker pruning), after the rebuild had been stopped in D-049 with
+9.64 GiB free. No download, dependency, Git command, upload or deployment was involved, and the development database `pmrs` was not connected to
+(the tests used only the throwaway `*_test` database, which was dropped; afterwards the server lists only `pmrs`).
+
+Results (actual): in a fresh plain copy of the tracked files (154 files) holding only the local MovieLens files and `docs/frozen_config.json`
+(copied to the path the code reads, as the README says), the documented `serving build` ran in about 7 seconds and wrote `evaluated_step16` and
+`serving_all_data` (it builds both; no evaluation metric is computed, Step 16 was not rerun and the test period was not read for evaluation).
+For both folders: manifest check PASS, frozen-hash check and model load (`load_verified`) PASS, `provenance.json` and the stored config identical to the
+originals, metadata equal apart from the timestamp, model hash and byte count. Sample recommendations from the rebuilt and original models (40 users x 5
+history sizes x 6 methods, `random` excluded): 1,200/1,200 top-10 lists identical per artifact, maximum score difference 0. The `recommender.joblib`
+files are **not byte-identical** (about 100-200 bytes different; cause not investigated), so equivalence is by behaviour, not file hash. All 16
+recommendation-API tests passed against the rebuilt artifact, the full suite passed (294, 0 skipped), ruff and strict mypy passed in the copy.
+Not covered: a fresh `uv sync`, the GroupLens download, other machines, and a comparison of anything beyond the sampled lists and metadata.
+
+App start for screenshots confirmed: `docker compose -f compose.app.yaml up --build -d` rebuilt the web image from the latest source in about 38 s; the
+migrate job seeded 610 / 9,742 / 100,836 and verified; the API was healthy; the served bundle contains the new footer text (attribution, not-endorsed
+line, DOI). The stack was then stopped. GitHub CI is still NOT current (its pass predates the `final.py` change, the footer change and the new test).
+V1 is not complete: the owner's screenshots, the final README update and the CI rerun remain.

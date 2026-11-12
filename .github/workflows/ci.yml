@@ -1,6 +1,8 @@
 # Continuous integration (Step 32).
 #
-# STATUS: the corrected workflow PASSED on GitHub (owner-reported). The first run failed
+# STATUS: an earlier version of this workflow PASSED on GitHub (owner-reported), but that run
+# was BEFORE the D-047 import change in src/pmrs/evaluation/final.py. CI therefore needs a rerun
+# after the owner's next push and is NOT VERIFIED for the current code. The first-ever run failed
 # at "set up job" because the action references were placeholders. They are now pinned to
 # full commit SHAs (version tags in the comments), looked up read-only from the official
 # actions/* repositories on 2026-11-12 as each repository's latest non-prerelease release.
