@@ -13,8 +13,9 @@ no hosted demo and no public URL, by design: see [Why there is no hosted demo](#
 | Hosted demo | **None, deliberately.** Deferred for V1 (decision D-048); see [the reasons below](#why-there-is-no-hosted-demo). |
 | Local Docker run | Built and run locally on one Mac; an 11-check round trip passed. See [Run it locally with Docker](#run-it-locally-with-docker). Not run on Linux or Windows. |
 | Model artifact for a fresh reader | Build steps are documented (the tracked `docs/frozen_config.json`, the MovieLens download and `serving build`); the rebuild was verified once in a clean copy (details below). See [the model artifact](#the-model-artifact). |
-| CI | Passed once on GitHub (owner-reported), but **before the latest code change**. It must be re-run after the next push, so CI is **not verified for the current code**. See [CI](#continuous-integration). |
-| Screenshots | **Not added yet.** The list of planned images is in [Screenshots](#screenshots). |
+| CI | Passed on GitHub after the final changes (owner-reported). Tests that need data skip there and are not counted as passed. See [CI](#continuous-integration). |
+| Version 1 | **Closed on 2026-11-12 (D-051)** as a local-only release: no hosted demo, no code licence, MovieLens non-commercial question left to the owner. |
+| Screenshots | Two screenshots of the local app are included (catalogue; log-in page with the footer). See [Screenshots](#screenshots). |
 | Code licence | **None.** The code is unlicensed for now, so all rights are reserved by default and no one is granted reuse rights. The owner has not chosen a licence. |
 
 ## What it does
@@ -174,31 +175,20 @@ local-only release the memory result is a hosting limitation, not a defect: the 
 cap and is reachable only from your own machine.
 
 ## Screenshots
-Screenshots are **not added yet**. They will be supplied last and this section updated once more. Planned
-images, each captured from the local Docker stack (not a hosted site), saved under `docs/screenshots/`:
+These are screenshots of the **local app** (the "Local build" label is visible in both). They are not a hosted demo: there is no public deployment.
+They were taken by the project owner on 2026-11-12 and are included unaltered. Other screens (recommendations, dashboard, analytics, movie detail,
+phone width) are not pictured.
 
-| # | Screen | What it shows |
-|---|---|---|
-| 1 | Catalogue with search and filters applied | search, genre/year/rating filters, generated placeholder posters |
-| 2 | A movie's detail page | rating, like/dislike, watchlist and watched controls |
-| 3 | Onboarding genre picker | how a new person starts |
-| 4 | Recommendations page (hybrid) | the fixed explanation sentences and the "served" notice |
-| 5 | Dashboard | the seven panels |
-| 6 | Analytics page | counts, a chart and text tables, with "served" and "acted" wording |
-| 7 | Dashboard or catalogue at phone width | responsive layout |
-| 8 | One page in dark and light mode (optional) | theming |
-| 9 | Offline evaluation chart (optional) | warm-user NDCG@10 with intervals, with the claim limit in the caption |
+![Screenshot of the local PMRS Movies catalogue in dark theme: a title search box, a genre drop-down set to Any, Search and Reset buttons, a More filters control, and a grid of movie cards with coloured generated placeholder posters, titles, genres and average ratings.](docs/screenshots/catalogue.png)
 
-How they will be made, and caption rules:
-- Use a throwaway local stack with a demo account (display name "Demo Viewer", an `@example.com` address) in a
-  clean browser profile. Do not capture the Account page (it shows the email), tokens, `.env`, environment
-  variables, database URLs, terminal paths, notifications, bookmarks or browser extensions.
-- Each caption says "local run, not a hosted demo". The recommendation screens need an account with 11 or more
-  ratings to show the hybrid; captions state the rating count and do not call the result personalised or
-  accurate. Analytics counts include imported MovieLens users, and "served" means returned by the API, not seen.
-  Posters are generated placeholders. Evaluation numbers describe the offline protocol only, never the app.
-- These are ordinary portfolio screenshots. Their captions keep the normal MovieLens attribution: the data is MovieLens (GroupLens), used for
-  non-commercial portfolio purposes, and the citation below applies.
+*Catalogue page of the local app (dark theme): search by title, a genre filter and extra filters, and movie cards with generated placeholder posters
+(not real artwork). The page notes that ratings combine the MovieLens dataset and ratings made in this app. Titles, genres and ratings come from
+MovieLens (GroupLens); see [Data, citation and attribution](#data-citation-and-attribution).*
+
+![Screenshot of the local PMRS Movies log-in page with empty email and password fields, a Log in button and a Create an account link. The footer below shows the local-build warning, the MovieLens attribution, a not-endorsed-by-GroupLens line and the Harper and Konstan (2015) citation with its DOI.](docs/screenshots/login-and-footer.png)
+
+*Log-in page of the local app, including the footer that appears on every page: the warning that this is a local development build not to be exposed
+publicly, the MovieLens attribution and non-endorsement line, and the citation of Harper and Konstan (2015).*
 
 ## Checks
 ```bash
@@ -211,9 +201,9 @@ Last full local runs: 294 backend tests (with data, artifacts and Postgres avail
 `.github/workflows/ci.yml` runs the commands above on GitHub Actions with a throwaway Postgres. Its first run
 failed during job setup because the action references were placeholders (owner-reported). They are now pinned
 to full commit SHAs (`actions/checkout` v7.0.1, `actions/setup-python` v7.1.0, `actions/setup-node` v7.1.0), and
-a corrected workflow then passed on GitHub (owner-reported). **That pass was recorded before the latest code
-change (an import-only edit to `src/pmrs/evaluation/final.py`), so the workflow must be re-run after the next
-push; until then CI is not verified for the current code.**
+a corrected workflow then passed on GitHub (owner-reported). An earlier pass predated an import-only edit to
+`src/pmrs/evaluation/final.py`, the footer change and its test; after the final changes the owner reported that
+CI passed again. I did not see either run.
 
 A fresh checkout has no MovieLens data and no artifact, so in CI these tests **skip, and a skipped test is not a
 pass**: 16 tests in `tests/test_api_recommendations.py` and 1 in `tests/test_download.py` (checked locally by

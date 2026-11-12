@@ -1147,3 +1147,20 @@ App start for screenshots confirmed: `docker compose -f compose.app.yaml up --bu
 migrate job seeded 610 / 9,742 / 100,836 and verified; the API was healthy; the served bundle contains the new footer text (attribution, not-endorsed
 line, DOI). The stack was then stopped. GitHub CI is still NOT current (its pass predates the `final.py` change, the footer change and the new test).
 V1 is not complete: the owner's screenshots, the final README update and the CI rerun remain.
+
+## D-051 (2026-11-12): Version 1 closed as a local-only release
+Owner decision. With the screenshots supplied, GitHub CI passed (owner-reported; I did not see the run, and the owner did not name the commit, so I recorded it as covering
+the final changes on the owner's word), and `MODEL_CARD.md` reviewed by the owner (three accuracy edits made at the owner's direction; status changed to final for V1), the
+owner asked for V1 to be closed. Gate 6 is approved on these terms: the one-command local Docker run, tests and CI, the documented evaluation, the README with two screenshots
+and the model card. **V1 has no public deployment** (D-048) and the code remains unlicensed.
+
+What V1 does not claim, recorded so the closure is not read as more than it is: no hosted demo and no hosting platform was tested (Render never was); a public API would need
+the deferred hardening (D-048); the 512 MB result was a local test; the evaluation supports only methods compared under the same per-user holdout protocol, and the serving
+artifact has no quality metric of its own (D-034); CI skips 17 data-dependent tests, which are NOT RUN, not passed, in that environment; the artifact rebuild was checked by
+behaviour on sampled inputs, not byte identity (D-050); not verified: a fresh `uv sync` and GroupLens download, Linux and Windows, a cold-cache Docker build, load or security
+testing, image vulnerability scans, `npm audit` and `pip-audit` (never approved), the EDA notebook and evaluation reruns in the final verification (frozen work), and the
+original nine-point specification list (the checklist was reconstructed).
+
+Open items carried forward, none blocking the closure: the code licence (deliberately none); whether a job-seeking portfolio use fits the MovieLens non-commercial terms (the
+owner's call); the other planned screenshots (recommendations, dashboard, analytics, detail, phone width) were not provided; the deferred public deployment and hardening, which
+belong to a possible future version (Render's free plan was only ever a possibility). No Git command was run by me at any point in Phase 6.
