@@ -413,7 +413,10 @@ SVD_TRIPLES = (
 
 
 def test_svd_fold_in_ranks_the_users_taste_group_first() -> None:
-    model = SVDScorer(factors=2).fit(toy_fit(SVD_TRIPLES, 6, 6))
+    # factors=1 on purpose: the centred toy matrix has singular values 8, 4, 4, so the
+    # first direction (the group split) is unique but a second would be a tie, and
+    # which of two tied directions is kept differs between platforms (CI on Linux).
+    model = SVDScorer(factors=1).fit(toy_fit(SVD_TRIPLES, 6, 6))
     group_a = hist([0, 3], [5.0, 1.0])  # likes item 0, dislikes item 3
     group_b = hist([0, 3], [1.0, 5.0])
     assert set(model.recommend(group_a, k=2).tolist()) == {11, 12}
