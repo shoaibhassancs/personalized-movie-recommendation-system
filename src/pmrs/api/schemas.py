@@ -144,3 +144,93 @@ class HistoryPage(BaseModel):
     page: int
     page_size: int
     total: int
+
+
+# ---- recommendations, dashboard, analytics (chunk 4C) -------------------------
+
+
+class RecommendationItem(BaseModel):
+    movie: MovieOut
+    score: float | None  # in the units of ``score_kind``; not comparable across methods
+    explanation: str  # a fixed sentence built from the method's own evidence
+    source: str  # the method whose evidence the sentence uses
+    state: MovieState  # the caller's own rating and flags for this movie
+
+
+class RecommendationsOut(BaseModel):
+    strategy: str
+    branch: str | None  # hybrid only: no_ratings, few_ratings or many_ratings
+    branch_reason: str
+    score_kind: str
+    rating_count: int  # the caller's ratings used to build the profile
+    items: list[RecommendationItem]
+    notes: list[str]
+    served_events_logged: int  # "shown" events: items served by the API, not seen
+    model_notice: str
+
+
+class TrendingItem(BaseModel):
+    movie: MovieOut
+    interactions: int
+
+
+class TrendingOut(BaseModel):
+    source: str  # "app_activity" or "dataset_latest_period"
+    window_start: datetime
+    window_end: datetime
+    window_days: int
+    note: str
+    items: list[TrendingItem]
+
+
+class DashboardOut(BaseModel):
+    recommended: RecommendationsOut
+    trending: TrendingOut
+    popular: list[MovieOut]
+    recent_releases: list[MovieOut]  # newest release years, not newest additions
+    genres: list[str]
+    watchlist: MoviePage
+    activity: HistoryPage
+
+
+class CountSplit(BaseModel):
+    total: int
+    movielens: int  # from the imported historical MovieLens users
+    app: int  # from registered app users
+
+
+class SummaryOut(BaseModel):
+    movies: int
+    users: CountSplit
+    ratings: CountSplit
+    interactions: dict[str, int]  # app interactions by kind (zeros included)
+    recommendation_events: dict[str, int]  # shown / acted
+    note: str
+
+
+class RatingBucket(BaseModel):
+    rating: float
+    total: int
+    movielens: int
+    app: int
+
+
+class RatingDistributionOut(BaseModel):
+    buckets: list[RatingBucket]
+    note: str
+
+
+class StrategyEngagement(BaseModel):
+    strategy: str
+    served: int
+    acted: int
+    acted_per_served: float | None
+    users: int
+
+
+class EngagementOut(BaseModel):
+    served: int
+    acted: int
+    users: int
+    by_strategy: list[StrategyEngagement]
+    note: str

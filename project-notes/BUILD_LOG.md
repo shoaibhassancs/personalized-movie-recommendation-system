@@ -14,6 +14,24 @@ entry-level AI/ML interview.
 ---
 
 ## Current status (2026-11-12)
+- **Six visual improvements to the chunk 5A frontend are made and checked (presentation and markup only).**
+  Automated checks pass; I have not seen them rendered, so your browser walkthrough is the real test.
+  Chunk 5B is not started.
+- **Two fixes to chunk 5A are made and checked (D-042):** the catalogue boxes follow the address on
+  Back/Forward/refresh/shared links, and opening a movie now records `viewed` without an `acted` event.
+  Chunk 5B is not started. **Awaiting your manual browser walkthrough.**
+- **Phase 5, chunk 5A (Steps 25-27) is built; automated checks pass, a real-browser check is NOT RUN
+  (D-041).** The `frontend/` folder holds a React + TypeScript + Vite app: register, log in, pick
+  genres, search and filter the catalogue, open a movie and rate / like / dislike / watchlist / mark
+  watched, see your watchlist and history, edit your account and delete it. It talks to the unchanged
+  API. Recommendations, dashboard and analytics (5B) are not built; people land on the catalogue.
+  Gate 4 was approved (D-040). **Awaiting your review of 5A.**
+- **Phase 4, chunk 4C (Steps 23-24) is built and verified (D-039); Gate 4 awaits your review.** The API
+  now serves recommendations from the frozen serving artifact (hybrid, popularity, content, item-kNN,
+  SVD), a seven-panel dashboard, login-only analytics, "served"/"acted" event logging, and strict CORS
+  for one frontend origin. Still local only (no rate limiting or HTTPS). The serving model has no
+  quality metric of its own. Like and dislike are confirmed mutually exclusive (D-038). Phases 5-6
+  (frontend, deployment) have not started.
 - **Phase 4, chunk 4B (Steps 20-22) is built and verified (D-037):** registration and login, profile,
   genres, the public catalogue with search/filters/sorting/paging, ratings and the like, dislike,
   watchlist, watched and viewed actions, history, and deleting your own account. Local use only: it
@@ -1216,3 +1234,274 @@ emails exist. CORS is not set up yet. The documentation pages at `/docs` are on.
 
 **Interview questions.** Why is a historical user safe from being logged in as, in more than one place?
 Why must validation errors not echo the input? What does idempotent mean for a PUT, and how did you test it?
+
+## Phase 4C · Recommendations, dashboard and analytics (Steps 23-24, 2026-11-12)
+
+**What this adds.** The API can now recommend. When the server starts it checks the serving artifact's
+SHA-256 manifest and the frozen-config hash with the same function Step 17 built, loads the model once
+(about 2 seconds), and refuses to start if anything does not match. Nothing is fitted or retrained, and no
+model code was written: the API only builds a profile and calls the existing `Recommender`. I re-read
+the architecture and database code first; the existing `recommendation_events` table already fits, so
+there is no schema change and no new dependency.
+
+**How a profile is formed.** For the signed-in user only, the API reads their ratings and their favourite
+genres from the database. That is all the model gets. Likes, dislikes, watched and watchlist are not
+inputs (your decision); a test shows that adding all four on movies outside the list leaves the list and
+its scores identical. Watched and disliked movies are only removed from what is displayed, and the list
+is topped up so it is still the length asked for. Movies you already rated never appear (the recommender
+already does that).
+
+**Warm and cold users.** The frozen routing decides, and each reply says which rung it used and why: no
+ratings gives your genres blended with popularity (or plain popularity without genres); 1 to 10 ratings
+gives popularity, and the reply says plainly it is not personalised; 11 or more gives the full hybrid.
+Tests check all of these, including the boundary (10 is popularity, 11 is the hybrid). I also found that
+`content`, `item_knn` and `svd` for a user with no ratings would return an arbitrary list (movies 1, 2, 3)
+because they have no evidence, so the API returns an empty list with an explanation instead.
+
+**Strategies and honesty.** Five strategies are served; `random`, `bayesian_average` and content-without-
+tags are refused with a 422 and the API docs say they exist only for the offline evaluation. Every
+recommendation reply carries a notice that the serving model was fitted on all MovieLens data, has no
+quality metric of its own, and that the Step 16 results describe a differently fitted model compared under
+one offline protocol.
+
+**Events.** Each time the API returns a list it writes one "shown" event per movie; the documentation and
+the dashboard call this *served by the API*, since nobody can know it was seen. When someone adds or
+changes a rating, like, dislike, watchlist, watched or view on a movie that was served to them, the same
+database transaction writes one "acted" event, once per serving, with the strategy that last served it.
+Removing something is not an action. Nothing claims the recommendation caused the action. The dashboard's
+"recommended" panel uses the same function as the recommendations route, so it logs once, not twice
+(a test counts 4 items served and 4 events).
+
+**Dashboard and analytics.** `GET /me/dashboard` returns seven panels: recommended, trending, popular,
+newest releases (by release year, not by when added), your genres, your watchlist and your recent
+activity. Trending uses the last 30 days of activity by registered users; if there is none (the case
+today, with no registered users) it falls back to the most-rated movies in the last 365 days of the
+MovieLens data and says so, including that the window ends at the data's last rating, not today. I used
+365 days because the final 30 days hold at most four ratings per movie. `/analytics/summary`, `/popular`,
+`/ratings-distribution` and `/engagement` need login, return counts only, keep MovieLens and app numbers
+in separate fields, and return honest zeros when the app has no activity.
+
+**CORS.** The browser app and the API will run on different origins in development (for example
+`localhost:5173` and `127.0.0.1:8000`). The API allows exactly one, `FRONTEND_ORIGIN` (default
+`http://localhost:5173`), with GET, PUT, POST and DELETE, the Authorization and Content-Type headers,
+and no credentials (the token is sent in a header, not a cookie). The setting is rejected if it is `*`,
+has a path or lacks a scheme. CORS is a browser rule only: it does not protect against other clients.
+
+**Files.** New: `pmrs/api/recommendations.py`, `dashboard.py`, `analytics.py`, `events.py`; extended
+`schemas.py`, `app.py`, `settings.py`, `actions.py` and `me.py` (history and watchlist became reusable
+functions); `.env.example` gained `FRONTEND_ORIGIN`. New tests: `tests/test_api_recommendations.py`
+(15, real artifact and real data in the test database) and `tests/test_api_dashboard.py` (20, hand-checked
+six-movie fixture with a stand-in recommender); the 4B tests now use the same stand-in so they stay fast.
+
+**Verification.**
+- 35 new tests PASS; the full suite is 293 passed, 0 skipped PASS.
+- ruff check, ruff format, strict mypy (55 files) and `uv sync --locked` PASS.
+- I deliberately broke three guards, one at a time, and the tests failed each time: no watched/disliked
+  filter (3 failures), no once-per-serving rule for "acted" (2), a CORS wildcard (3); the code was then
+  restored byte for byte. PASS.
+- Artifact verification PASS: a copy loads; one flipped bit, an extra file and a missing folder are each
+  refused at startup; the real artifact was never modified and both manifests still verify.
+- Manual walkthrough against a real running server (uvicorn) on a throwaway copy of the real data in the
+  test database PASS: all branches, dashboard, analytics, CORS allowed/blocked, 401 without login, a refused
+  strategy, and account deletion. The server log held no password, token or secret. The test database was
+  dropped; the dev database is unchanged (610 users, 0 registered, 100,836 ratings, 9,742 movies, 0 events).
+- Latency and memory (local, one client, median of 15, not a load test): startup 2.2 s; server memory about
+  228 MB after startup and 215 MB after the calls (this machine has 8 GB); recommendations 29-36 ms for
+  every strategy, worst single call 90 ms; the dashboard 131 ms; analytics 6-28 ms.
+- Step 16 results, both artifact folders, the frozen config, seed data, split and protocol are untouched
+  (manifests verify). The test period was not read. NOT RUN: rate limiting, HTTPS, many simultaneous users,
+  any measure of how good the recommendations are.
+
+**Not verified / limits.** Passing tests show the wiring and rules work, not that a list is good: the
+serving model has no metric. The "acted per served" figure has no comparison group and is not an effect.
+Analytics show app totals to every logged-in user, which with very few users could be near-identifying.
+`serving verify` rewrote its report file `step17_checks.json` (not part of either artifact).
+
+**Interview questions.** Why not feed likes and watched into the model? Why is "shown" called "served"?
+Why is the serving model's quality unknown and what does Step 16 actually tell you? Why return an empty
+list for a method with no evidence rather than an arbitrary one? What does CORS protect, and what not?
+
+
+---
+
+## Phase 5A · Frontend scaffold, accounts and catalogue (Steps 25-27, 2026-11-12; D-041)
+
+**What this chunk is.** The first screen people can actually use. Until now everything was an API you
+could only call from code. Now there is a web page for it. I built only Steps 25-27; the
+recommendations page, the dashboard and the analytics page come in 5B.
+
+**What was built, in plain words.**
+- *The app shell (Step 25).* A React app written in TypeScript and built with Vite, with plain CSS
+  (light and dark mode follow the computer's setting). A small "API client" is the one place that talks
+  to the backend: it adds the login token to requests, turns error replies into one readable sentence,
+  and says "cannot reach the API" if the server is down. If any logged-in request gets a 401 (token
+  expired or invalid) the app forgets the token and sends you to the login page with a message.
+- *Accounts (Step 26).* Register (the password box counts characters, 15-128, and the password is sent
+  exactly as typed, never trimmed), then it logs you in automatically and offers the 19 genres to pick
+  (skippable, editable later in Account). Login shows the API's generic "incorrect email or password".
+  A route guard sends visitors who open a login-only page (watchlist, history, account) to the login page
+  and brings them back afterwards. The token lives in `sessionStorage` (it survives a refresh in the same
+  tab and disappears when the tab closes). It is also dropped at its 60-minute expiry.
+- *Catalogue and movie page (Step 27).* Search by title, genre, year range, minimum average rating, sort
+  and order, with paging. All of it is kept in the page address, so Back, Refresh and sharing a link
+  work. The movie page shows the generated poster, genres, tags, average rating and count, and for a
+  logged-in person: a half-star rating (ten buttons, 0.5 to 5, plus "Clear rating"), Like, Dislike,
+  Watchlist and Watched. Every button shows exactly what the server answered, so Like and Dislike swap
+  because the server swaps them (D-038), and a reload always agrees. Visitors see "log in to rate".
+- *Account deletion.* Explains what is erased, needs the phrase "delete my account" typed, then deletes,
+  forgets the token, and shows "Your account was deleted". The page also states plainly that the API does
+  not ask for the password again, so this must be fixed before the app is ever public.
+
+**Choices (owner decisions are in D-041; these are mine).** Ratings in lists include MovieLens and app
+ratings, and the screen says so. The "local development build" banner sits on every page. Watchlist and
+History page numbers are held in the page, not the address. Hand-written TypeScript types mirror the API
+schemas (no code generator, to avoid another dependency).
+
+**An honest change to the plan.** The detail page does *not* call `POST /view`. That backend route also
+records an "acted" event (D-039), and you said a page view must not count as acted. Fixing it properly
+means a one-line backend change, which I did not make without asking. So no "viewed" row is written yet.
+This is the one open question for you (see D-041).
+
+**Two real bugs the tests found in my own first draft** (both fixed, both now covered): (1) when the saved
+token was rejected on page load, a second line of code erased the "session ended" message; (2) after
+deleting an account the route guard raced the redirect and sent you to the login page instead of the
+"account deleted" page.
+
+**Verification** (all run from `frontend/`; PASS / FAIL / NOT RUN):
+- `npm run typecheck` (strict TypeScript, unused code and unchecked array access are errors): PASS.
+- `npm run lint` (ESLint with React-hooks rules; forbids `dangerouslySetInnerHTML`): PASS.
+- `npx prettier --check .`: PASS.
+- `npm test` (Vitest + Testing Library, 31 tests in 4 files, nothing skipped): PASS. They cover the token
+  store (expiry, corrupt data, storage refused), the API client (header, error messages, 401 with and
+  without a token, unreachable API, 204), the route guard, register (untrimmed password, no password in
+  browser storage, too-short blocked), login failure, rating set/clear, mutually exclusive like/dislike,
+  independent watchlist and watched, "never calls the view route", visitor view, server errors, catalogue
+  URL state, deletion needing the typed phrase, and genre onboarding.
+- Mutation checks (I deliberately broke the code four ways and the intended tests failed each time, then I
+  restored it): PASS.
+- `npm run build`: PASS. JavaScript 281 kB (88.6 kB compressed), CSS 3.9 kB. No secret value or name
+  (JWT_SECRET, database password, DATABASE_URL) appears in the bundle or sources: PASS. The bundle's only
+  URLs are XML-namespace strings and library error-message links; nothing is fetched from outside.
+- Walkthrough against the real API on a throwaway copy of the data (database ending `_test`, dropped
+  afterwards; the development database was not connected to): PASS. The real app code, with real network
+  calls, registered an account, saved genres, searched and filtered, opened Toy Story, rated 4.5, liked
+  then disliked (like disappeared), added to watchlist, marked watched, reloaded (all state still
+  there), cleared the rating, saw it in watchlist and history, renamed the account, deleted it, and the
+  deleted account could no longer log in. Afterwards the database had 0 registered users, 100,836 ratings
+  and 610 historical users unchanged, 0 interactions, 0 genres, 0 events, and the server log had no
+  token or password and no `/view` call.
+- CORS preflight with curl: PASS. `http://localhost:5173` is allowed (GET, PUT, POST, DELETE and the
+  Authorization header); `http://127.0.0.1:5173` and `http://localhost:5174` get no permission.
+- Vite `strictPort`: PASS (a second dev server on 5173 fails with "Port 5173 is already in use").
+- Backend unchanged: `uv run pytest` 293 passed, `ruff check` and strict `mypy` pass.
+- **NOT RUN: a walkthrough in a real browser.** I have no browser tool here, so the walkthrough above ran
+  the app in a simulated browser (jsdom). It does not prove the layout, dark mode, keyboard focus rings,
+  phone width, real CORS enforcement by a browser, or Safari/Firefox behaviour. Please do the checklist
+  below once.
+
+**Your manual browser checklist.** (1) Start the database, `uv run uvicorn pmrs.api.app:create_app
+--factory`, and in `frontend/` run `npm install --no-audit` (first time) then `npm run dev`; open
+`http://localhost:5173` (not 127.0.0.1). (2) Register, pick two genres, search "toy", open a movie,
+rate it, like it, then dislike it, add to watchlist, mark watched, refresh: everything should persist.
+(3) Open Watchlist and History. (4) Log out and back in. (5) Try the browser's dark mode and a narrow
+window. (6) Use only the Tab and Enter keys to rate a movie. (7) Delete the account. Note: this uses the
+development database, so do it only if you want a test account in it (delete it at the end).
+
+**Not verified / limits.** The session-token storage is exposed to page scripts (XSS) by design (D-041).
+The API has no rate limiting, HTTPS or token revocation, and account deletion needs no password: local
+only. The catalogue search boxes are not re-filled when you use the browser Back button (the list is
+correct; the form fields can show the last typed values). No accessibility audit, no real-device test,
+no performance measurement. `npm audit` was not run (you did not approve it), so dependencies are not
+checked for known vulnerabilities. The package versions are what npm resolved as latest; I did not
+independently check them, and `--ignore-scripts` was used on install.
+
+**Interview questions.** Why `sessionStorage` rather than `localStorage` or a cookie, and what does each
+leave exposed? Why does the browser need CORS when the API is on a different port? Why did we call the
+API directly instead of using a dev proxy? Why does the screen show the server's answer after every click
+instead of guessing? Why are search filters kept in the URL? Why did a unit-style mock test not replace
+the walkthrough against the real API?
+
+---
+
+## Phase 5A fixes · URL-synced filters and view without "acted" (2026-11-12; D-042)
+
+**Fix 1, filters follow the address.** The search boxes used to be filled from the address only once, so
+Back or Forward changed the list but left old text in the boxes. The form is now its own component that is
+rebuilt whenever the filters in the address change (the page number is ignored), so the boxes always show
+what the address says. Reset also clears unapplied typing.
+
+**Fix 2, a view is not an action.** The backend route `POST /movies/{id}/view` no longer writes an
+`acted` event; it only stores/refreshes the `viewed` row. The detail page calls it once per visit when
+logged in and ignores a failure. `acted` remains: rating, like, dislike, watchlist, watched on a served
+movie, once per serving. This is the only API behaviour change; D-039 is corrected by D-042.
+
+**Verification.**
+- Frontend `typecheck`, `lint`, `prettier --check`: PASS. `npm test`: 35 tests PASS (4 new/changed:
+  view recorded once for a logged-in person and nothing else sent; no view for a visitor; page still works
+  if the view call fails; boxes re-fill on shared link, Back and Forward; Reset clears typed text). `npm
+  run build`: PASS (281 kB JavaScript).
+- Mutation checks: removing the form re-keying, or the view call, makes the matching test fail; making
+  `view` log `acted` again makes 2 backend tests fail (the updated dashboard test and the new
+  "viewing records viewed but no acted" test): PASS. Code restored.
+- Backend: `pytest` 294 passed (was 293, plus one new test), `ruff check`, `ruff format --check`, strict
+  `mypy`: PASS.
+- NOT RUN: a real browser (Back/Forward in a real browser, focus, dark mode, phone width); the jsdom test
+  uses jsdom's history, which behaves like a browser's for this purpose but is not one. Not re-run: the
+  earlier real-API walkthrough (the view call was exercised only against the mocked API plus the backend
+  tests).
+- Unchanged: schema, recommender, evaluation, artifacts, seed data. Nothing was uploaded.
+
+
+---
+
+## Phase 5A polish · six visual improvements (2026-11-12)
+
+**Why.** My own review of the layout (by reading the code, not by looking at screens) found places that
+were cluttered or hard to read. You approved all six fixes, limited to how things look and how the page
+markup is arranged. No API behaviour, database data, recommender, evaluation, account or session
+behaviour changed, and no package was installed. The optional "keep old results visible while loading"
+change was deliberately not made.
+
+**What changed and why.**
+1. *Clear on/off for the movie buttons and rating chips.* Before, an unpressed and a pressed button were
+   both solid blue, so you could not tell Like from Liked except by the word. Now buttons are outlined when
+   off and filled (with a check mark) when on; the ten rating chips use the same look and are at least
+   44 px tall for fingers. While a request runs the buttons are still disabled (so two clicks cannot
+   race) but no longer fade, which removed a flicker. A line under the buttons says "Filled buttons are on".
+2. *Account deletion in its own box.* The delete section is now a red-bordered, tinted "Delete your
+   account" region, set apart from the Save button, and the dark-mode delete button uses a darker red so
+   its white text is readable.
+3. *Selected genre chips.* A chosen genre now fills the whole chip, so you can scan what you picked (on the
+   onboarding page and in Account). The checkbox is kept, so it still works with a keyboard and screen
+   readers.
+4. *Compact catalogue filters.* Only the title box, the genre box and the Search/Reset buttons are always
+   visible. Year range, minimum rating, sort and order sit under "More filters", which opens itself, and
+   says how many are active, when the address already uses them. The address still holds all the state.
+5. *History rows.* Each row is now a card like the Watchlist ones: a small poster, the title, small status
+   badges (Rated 4.5, Liked, Disliked, On watchlist, Watched; "Viewed" when there is nothing else) and the
+   date. The whole row is one link.
+6. *Header and banner.* The full-width blue banner is gone. A small "Local build" pill sits beside the name
+   at the top and the full warning ("do not expose it publicly; no rate limiting or HTTPS yet") is in the
+   footer and still on the Account page. The account link reads "Account · name" (long names are cut with
+   an ellipsis) and Log out is now a small button.
+
+**A bug caught on the way.** My new test showed the account link would have read "Account· Ada" because a
+space at the start of an inline box disappears; the space now sits outside it.
+
+**Verification** (in `frontend/`; PASS / FAIL / NOT RUN):
+- `npm run typecheck`, `npm run lint`, `npx prettier --check .`: PASS.
+- `npm test`: PASS, 43 tests in 5 files (35 before; 8 new for the folded and auto-opened filters, History
+  badges, the danger-zone region, the header pill and footer warning, the account link and Log out button,
+  the on/off markers, and checked genre chips). Nothing skipped.
+- Mutation checks (breaking auto-open, the "Viewed" badge, and the toggle class each made the matching
+  test fail; code restored): PASS.
+- `npm run build`: PASS (JavaScript 282.5 kB, CSS 5.4 kB).
+- NOT RUN: any look at the real pages. Colours, spacing, the phone layout, the dark-mode contrast of the new
+  danger zone and filled chips, and the focus rings are untested by eye. The tests check structure and
+  state, not appearance. The filled genre chip uses the CSS `:has()` selector (current Chrome, Safari and
+  Firefox 121+); in an older browser the chip would just show its checkbox as before.
+- Backend not re-run: nothing outside `frontend/src` was touched.
+
+**Please check in the browser:** the Like/Dislike/Watchlist/Watched on-off look, the rating chips on a
+phone, the red account box in light and dark mode, the genre chips, "More filters" opening and closing, a
+History page with a few movies, and the header at phone width.

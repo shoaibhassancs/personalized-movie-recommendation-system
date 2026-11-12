@@ -297,7 +297,7 @@ library, a JWT library, httpx (tests). Docker for Postgres.
 - Output: endpoints + tests. Done when: repeated actions update rather than duplicate; users see
   only their own data.
 
-**Step 23. Recommendation endpoints and engagement events**
+**Step 23. Recommendation endpoints and engagement events** (built and verified 2026-11-12; D-039)
 - Goal: serve the three methods. Needs: 17, 22. Method: load artifacts at startup; build the
   user profile from DB interactions; call the shared `Recommender`; log "shown" and
   "acted-on" events with the strategy name.
@@ -305,14 +305,14 @@ library, a JWT library, httpx (tests). Docker for Postgres.
   (fallback), few ratings, many ratings; seen movies excluded; adding a rating changes the
   list; response time measured and recorded (no performance claim without the number).
 
-**Step 24. Dashboard and analytics endpoints**
+**Step 24. Dashboard and analytics endpoints** (built and verified 2026-11-12; D-039)
 - Goal: data for sections F and G. Needs: 23. Method: SQL aggregates. Trending = most
   interactions in a recent window of the **app's** data, falling back to the dataset's latest
   period (stated on the page); recently added = newest release years.
 - Output: endpoints + tests. Done when: aggregates match hand-checked counts on a fixture; empty
   states return honest zeros.
 
-**Gate 4:** API verified by tests and by calling it manually together.
+**Gate 4:** API verified by tests and by calling it manually together. (Evidence produced 2026-11-12, D-039; awaiting owner review.)
 
 ## Phase 5: Frontend (Steps 25–30)
 
@@ -322,11 +322,17 @@ typescript, a small chart library, vitest + testing-library.
 **Step 25. React scaffold and API client.** Goal: running app with routing and typed API calls.
   Needs: 20. Done when: build succeeds and a login round-trip works. Risk: `node_modules` disk
   use (check).
+  *Built 2026-11-12 (chunk 5A, D-041): build, 31 tests, lint and a real-API login round-trip PASS;
+  `node_modules` is 176 MB.*
 **Step 26. Auth, profile and genre onboarding.** Needs: 25. Done when: register → pick genres
   → land on the dashboard, verified in a browser.
+  *Built 2026-11-12 (5A): lands on the catalogue until the dashboard exists (5B), owner-approved.
+  Verified against the real API in a simulated browser (jsdom); the real-browser check is NOT RUN.*
 **Step 27. Catalogue and movie detail.** Search, filters, rating/like/watchlist/watched
   controls. Needs: 21, 22, 26. Done when: each control changes state and persists after reload.
-**Step 28. Recommendations page.** Strategy switch (content / collaborative / hybrid),
+  *Built 2026-11-12 (5A): every control changes state and persists after reload against the real API
+  (jsdom). Real-browser check NOT RUN. D-042: the detail page records `viewed` (no `acted`).*
+**Step 28. Recommendations page.** Strategy switch (hybrid by default; the API serves five: hybrid, popularity, content, item-kNN, SVD),
   explanation text, cold-start message. Needs: 23, 27. Done when: a fresh account and a
   heavily-rating account show clearly different, explained lists.
 **Step 29. User dashboard.** Needs: 24, 28. Done when: all seven dashboard items in section F

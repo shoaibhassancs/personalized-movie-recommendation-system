@@ -822,3 +822,113 @@ exists). Step 1 still has to finish its other work, so it is **not** marked done
   working because the user is gone, but a stolen token of a live user works until it expires); CORS not
   configured (frontend phase); recommendations, dashboard and analytics (chunk 4C) not started. A
   Starlette warning recommends `httpx2` for the test client; not installed (unapproved).
+
+## D-038 (2026-11-12): like and dislike are mutually exclusive (owner-confirmed)
+
+- **Owner decision:** the owner confirmed the interpretation flagged in D-037. Like and dislike are
+  mutually exclusive: adding one removes the other. Ratings, watched status and watchlist status stay
+  independent of each other and of like/dislike. No code change was needed; the API already behaves
+  this way and has tests for it.
+
+## D-039 (2026-11-12): chunk 4C, recommendations, dashboard and analytics (Steps 23-24)
+
+- **Owner decisions (approved):** use the existing `serving_all_data` artifact without changing or
+  retraining anything, and state that it has no separate quality metric and that the Step 16 results
+  apply only to the evaluated model. Expose `hybrid`, `popularity`, `content`, `item_knn` and `svd`;
+  `random`, `bayesian_average` and content-without-tags stay evaluation-only (said in the API docs).
+  Profiles use the signed-in user's ratings and favourite genres only; likes, dislikes, watched and
+  watchlist are never model inputs, and watched and disliked movies may be hidden from displayed lists.
+  An `acted` event is recorded automatically by the existing action routes when the user acts on a
+  movie previously served; "shown" means *served by the API*, not seen, and nothing claims an action
+  was caused by a recommendation. `/analytics/*` requires login. CORS allows exactly the configured
+  frontend origin, no wildcard. The dashboard has all seven panels and reuses the recommendation
+  service without duplicate event logging.
+- **Built:** `GET /me/recommendations?strategy=&k=` (k 1-50), `GET /me/dashboard`, and
+  `GET /analytics/summary|popular|ratings-distribution|engagement`. Startup verifies the artifact's
+  SHA-256 manifest and frozen-config hash with the existing `load_verified`, then loads it once; the app
+  refuses to start if that fails. `create_app` takes an optional stand-in recommender for tests.
+  `FRONTEND_ORIGIN` (default `http://localhost:5173`, validated: scheme, host, optional port, no path,
+  no wildcard) and `SERVING_ARTIFACT_DIR` are settings. No schema change, no new dependency.
+- **Recommendation rules (my choices within your decisions, each testable):**
+  - Hybrid routing is the frozen one (D-030). The response names the branch and gives a plain reason;
+    with 0 or 1-10 ratings it says the list is not personalised.
+  - Hidden movies are filtered after the model runs; the request asks for k plus the number hidden so
+    the list is still k long. Watchlist and liked movies stay visible and show their state.
+  - `content`, `item_knn` and `svd` with zero ratings return an empty list and a note, because the
+    models have no evidence and would otherwise return an arbitrary list (checked: movie ids 1, 2, 3).
+    With 1-10 ratings they work but carry a note that they were only evaluated for users with many.
+- **Event rules:** a `shown` event is written for each movie returned, per call. An `acted` event is
+  written when the user adds or changes (not removes) a rating, like, dislike, watchlist, watched or
+  view on a movie that has a `shown` event, once per serving; it carries the latest serving's strategy.
+  Because the schema stores only shown/acted, the kind of action is not kept. The dashboard's
+  recommended panel goes through the same function, so it logs once.
+- **Dashboard definitions:** trending = ratings and actions by registered users in the last 30 days;
+  if there are none, the most-rated movies in the final 365 days of the MovieLens data (ending at its
+  last rating, not today), with the source and window stated. The dataset fallback uses 365 days because
+  the last 30 days hold at most 4 ratings per movie. "Recent releases" is by release year, not by when
+  a movie was added.
+- **Analytics:** aggregates only, MovieLens and app numbers always in separate fields, engagement only
+  from `recommendation_events`.
+- **Measured (local, one client, median of 15, not a load test):** startup including SHA-256 check and
+  load 2.2 s; server memory about 228 MB after startup and 215 MB after the calls; a recommendation
+  request 29-36 ms for every strategy and user type (single worst call 90 ms); an empty single-method
+  reply about 6 ms; the dashboard 131 ms; analytics 6-28 ms.
+- **Not done / limits:** no rate limiting, no HTTPS, no token revocation (still local only); CORS is a
+  browser rule, not protection against other clients; one registered account sees only itself, but
+  analytics show app totals to every logged-in user, which with very few users can be near-identifying;
+  `acted` is not stored per action type; no test of many simultaneous users; recommendation quality is
+  not shown by any of this. Starlette's `httpx2` warning remains (not installed, unapproved).
+- **Unchanged:** recommender code, configuration hash, both artifacts, Step 16 results, seed data,
+  split, protocol. The test period was not read. `serving verify` rewrote its report
+  `step17_checks.json` (outside the artifact folders); both manifests still verify.
+
+## D-040 (2026-11-12): Gate 4 approved
+The owner accepted Steps 23-24 as built, with the recorded limitations (D-037, D-039: local only, no
+rate limiting or HTTPS, no quality metric for the serving artifact). The backend, recommender,
+evaluation results and artifacts are not to change.
+
+## D-041 (2026-11-12): Phase 5, chunk 5A (Steps 25-27): frontend scaffold, accounts, catalogue
+Owner decisions (approved in the chunk 5A message):
+- React, TypeScript, Vite and plain CSS (this closes the open "React vs a simpler frontend" decision).
+  Phase 5 is split: 5A = Steps 25-27, 5B = Steps 28-30. Until the dashboard exists (5B), people land on
+  the catalogue instead of "the dashboard" named in Step 26.
+- The 60-minute bearer token is kept in `sessionStorage` (token and expiry time only). Passwords are
+  never stored in the browser. Known limit: any script running on the page could read the token (XSS).
+  Mitigations: no `dangerouslySetInnerHTML` (an ESLint rule forbids it), no third-party scripts, fonts or
+  analytics.
+- Dependency set approved with `npm install --no-audit`; `npm audit` is not to be run without separate
+  approval.
+- The 19 MovieLens genres are a frontend constant (no genres endpoint). The catalogue list API is
+  unchanged (list items carry no per-user state, so controls live on the detail page).
+- Direct calls to the API (no Vite proxy) with exactly one CORS origin, `http://localhost:5173`, and Vite
+  `strictPort`. Only `VITE_API_URL` is exposed to the browser; no secret may ever use a `VITE_` name.
+- The browser walkthrough runs on the throwaway test database only; the development database is not used.
+- A detail-page view may be recorded as "viewed" but must not count as an acted recommendation; acted
+  events stay limited to the explicit actions in D-039. Recommendation click-through is for later.
+- The API stays local. Before any public exposure: HTTPS, login throttling and the account-deletion risk
+  (the API does not ask for the password again) must be addressed.
+
+Built and checked (see BUILD_LOG, "Phase 5A"):
+- Packages installed (exact versions, lockfile `package-lock.json` saved in `frontend/`): react 19.3.1, react-dom 19.3.1,
+  react-router 7.18.5; dev: vite 8.3.8, @vitejs/plugin-react 6.3.0, typescript 6.0.3, vitest 5.1.0,
+  jsdom 29.1.1, @testing-library/react 16.3.3, jest-dom 7.0.1, user-event 14.6.10, eslint 10.14.0,
+  typescript-eslint 8.72.2, prettier 3.10.0. Six small companion packages were also installed that the
+  proposal did not list by name and that need the owner's acknowledgement: @types/react,
+  @types/react-dom, @types/node (type definitions), @eslint/js and globals (lint presets) and
+  eslint-plugin-react-hooks (React lint rules). Installed with `--ignore-scripts` as well. 238 packages,
+  `node_modules` 176 MB.
+- **Open point for the owner:** the backend's `POST /movies/{id}/view` also records an acted event
+  (D-039). Because a detail-page view must not count as acted, the 5A frontend does NOT call it, so no
+  "viewed" row is written. Options: (a) leave it (recommended for now); (b) approve a one-line backend
+  change so `view` records `viewed` without an acted event, with its test updated.
+- Unchanged: backend, recommender, artifacts, evaluation results, seed data, split, protocol.
+
+## D-042 (2026-11-12): a view records `viewed` only, never an `acted` event (corrects D-039)
+Owner decision. Opening a movie detail page records a `viewed` interaction (one row per user and movie;
+a repeat refreshes its time) and does not write a recommendation `acted` event. `acted` is limited to
+adding or changing a rating, like, dislike, watchlist or watched on a movie that was served. This
+supersedes the part of D-039 that listed "view" among acting events and resolves the open point in
+D-041. Change: `POST /movies/{id}/view` no longer calls `record_acted` (the only API behaviour change);
+the frontend detail page now calls it once per visit for a logged-in person (best effort; a failure
+does not break the page). No schema, recommender, evaluation or artifact change. Also fixed: the
+catalogue filter boxes now re-fill from the URL on Back, Forward, refresh and shared links.

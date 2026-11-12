@@ -1,6 +1,9 @@
 """Rate, like, dislike, watchlist, watched, viewed. All need login; the user comes from
 the token. Every write is an upsert or a delete, so repeating an action never creates a
-duplicate and deleting something absent is not an error."""
+duplicate and deleting something absent is not an error. Adding or changing (not
+removing) a rating, like, dislike, watchlist or watched on a movie that was served in
+a recommendation list also records one ``acted`` event (see ``events``). A view does
+not."""
 
 from decimal import Decimal
 
@@ -10,6 +13,7 @@ from sqlalchemy.dialects.postgresql import insert
 
 from pmrs.api.catalogue import states_for
 from pmrs.api.deps import CurrentUser, SessionDep
+from pmrs.api.events import record_acted
 from pmrs.api.schemas import MovieState, RatingIn
 from pmrs.db.models import Interaction, Movie, Rating
 
@@ -42,6 +46,7 @@ def put_rating(
             set_={"rating": value, "rated_at": func.now()},
         )
     )
+    record_acted(session, user.id, movie_id)
     session.commit()
     return _state(session, user.id, movie_id)
 
@@ -76,6 +81,7 @@ def _set_flag(
             index_elements=[Interaction.user_id, Interaction.movie_id, Interaction.kind]
         )
     )
+    record_acted(session, user_id, movie_id)
     session.commit()
     return _state(session, user_id, movie_id)
 
@@ -115,7 +121,8 @@ for _kind in ("like", "dislike", "watchlist", "watched"):
 @router.post("/{movie_id}/view", response_model=MovieState)
 def post_view(movie_id: int, user: CurrentUser, session: SessionDep) -> MovieState:
     """Record that the caller viewed the movie. One row per user and movie: a repeat
-    only refreshes the time (the schema cannot count views)."""
+    only refreshes the time (the schema cannot count views). A view is NOT an explicit
+    action, so it never writes an ``acted`` recommendation event (D-042)."""
     _require_movie(session, movie_id)
     session.execute(
         insert(Interaction)

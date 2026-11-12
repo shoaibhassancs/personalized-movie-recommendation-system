@@ -18,6 +18,7 @@ or show how the API behaves under load.
 import logging
 from collections.abc import Iterator
 from pathlib import Path
+from types import SimpleNamespace
 
 import jwt
 import pandas as pd
@@ -33,6 +34,12 @@ from pmrs.api.security import create_token
 from pmrs.api.settings import ApiSettings
 from pmrs.data import MovieLensData, ValidationReport
 from pmrs.db.seed import seed
+from pmrs.recommender.explain import Evidence
+from pmrs.recommender.recommender import (
+    Recommendation,
+    RecommendationList,
+    UserProfile,
+)
 
 ROOT = Path(__file__).resolve().parents[1]
 SECRET = "test-only-secret-" + "k" * 40  # a fixed test value, not a real secret
@@ -113,6 +120,38 @@ def engine(test_url: str) -> Iterator[Engine]:
     eng.dispose()
 
 
+class StubRecommender:
+    """Stands in for the real Recommender in tests that do not need real models: a
+    fixed order over the six fixture movies, minus what the profile already rated."""
+
+    item_map = frozenset({1, 2, 3, 4, 5, 6})
+    genre_names = {"action": "Action", "comedy": "Comedy", "drama": "Drama"}
+    config = SimpleNamespace(few_max=10)
+    order = (2, 1, 3, 4, 6, 5)
+
+    def recommend(
+        self, profile: UserProfile, strategy: str = "hybrid", k: int = 10
+    ) -> RecommendationList:
+        n = len(profile.ratings)
+        branch = None
+        if strategy == "hybrid":
+            branch = "no_ratings" if n == 0 else "few_ratings" if n <= 10 else "many"
+        items = tuple(
+            Recommendation(
+                movie_id=m,
+                title=f"stub {m}",
+                genres=(),
+                score=float(10 - m),
+                explanation=f"stub sentence {m}",
+                evidence=Evidence("no_evidence"),
+                source="popularity",
+            )
+            for m in self.order
+            if m not in profile.ratings
+        )[:k]
+        return RecommendationList(strategy, branch, "rating count", items)  # type: ignore[arg-type]
+
+
 @pytest.fixture()
 def client(engine: Engine) -> TestClient:
     with engine.begin() as connection:
@@ -123,7 +162,7 @@ def client(engine: Engine) -> TestClient:
             )
         )
     seed(engine, catalogue_data())
-    app = create_app(ApiSettings(jwt_secret=SECRET), engine)
+    app = create_app(ApiSettings(jwt_secret=SECRET), engine, StubRecommender())
     return TestClient(app)
 
 

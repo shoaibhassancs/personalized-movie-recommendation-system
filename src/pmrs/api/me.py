@@ -5,6 +5,7 @@ Every route takes the user from the token. None accepts a user id.
 
 from fastapi import APIRouter, HTTPException, Query, Response, status
 from sqlalchemy import delete, func, select
+from sqlalchemy.orm import Session
 
 from pmrs.api.auth import user_out
 from pmrs.api.catalogue import (
@@ -27,7 +28,7 @@ from pmrs.db.models import Interaction, Rating, User, UserGenre
 router = APIRouter(prefix="/me", tags=["me"])
 
 
-def _genres(session: SessionDep, user_id: int) -> list[str]:
+def genres_of(session: Session, user_id: int) -> list[str]:
     rows = session.execute(
         select(UserGenre.genre)
         .where(UserGenre.user_id == user_id)
@@ -38,7 +39,7 @@ def _genres(session: SessionDep, user_id: int) -> list[str]:
 
 @router.get("", response_model=UserOut)
 def read_me(user: CurrentUser, session: SessionDep) -> UserOut:
-    return user_out(user, _genres(session, user.id))
+    return user_out(user, genres_of(session, user.id))
 
 
 @router.put("", response_model=UserOut)
@@ -48,7 +49,7 @@ def update_me(body: ProfileIn, user: CurrentUser, session: SessionDep) -> UserOu
     stored.display_name = body.display_name
     session.commit()
     session.refresh(stored)
-    return user_out(stored, _genres(session, user.id))
+    return user_out(stored, genres_of(session, user.id))
 
 
 @router.put("/genres", response_model=UserOut)
@@ -81,20 +82,16 @@ def delete_me(user: CurrentUser, session: SessionDep) -> Response:
     return Response(status_code=status.HTTP_204_NO_CONTENT)
 
 
-@router.get("/history", response_model=HistoryPage)
-def history(
-    user: CurrentUser,
-    session: SessionDep,
-    page: int = Query(1, ge=1),
-    page_size: int = Query(20, ge=1, le=MAX_PAGE_SIZE),
+def history_page(
+    session: Session, user_id: int, page: int, page_size: int
 ) -> HistoryPage:
-    """Movies the caller rated or acted on, newest activity first."""
+    """Movies the user rated or acted on, newest activity first."""
     rated = select(
         Rating.movie_id.label("movie_id"), Rating.rated_at.label("ts")
-    ).where(Rating.user_id == user.id)
+    ).where(Rating.user_id == user_id)
     acted = select(
         Interaction.movie_id.label("movie_id"), Interaction.created_at.label("ts")
-    ).where(Interaction.user_id == user.id)
+    ).where(Interaction.user_id == user_id)
     activity = rated.union_all(acted).subquery()
     last = (
         select(activity.c.movie_id, func.max(activity.c.ts).label("last"))
@@ -110,7 +107,7 @@ def history(
     ).all()
     ids = [r[0] for r in rows]
     movies = movies_by_id(session, ids)
-    states = states_for(session, user.id, ids)
+    states = states_for(session, user_id, ids)
     items = [
         HistoryItem(movie=movies[i], state=states[i], last_activity=when)
         for i, when in rows
@@ -118,14 +115,20 @@ def history(
     return HistoryPage(items=items, page=page, page_size=page_size, total=int(total))
 
 
-@router.get("/watchlist", response_model=MoviePage)
-def watchlist(
+@router.get("/history", response_model=HistoryPage)
+def history(
     user: CurrentUser,
     session: SessionDep,
     page: int = Query(1, ge=1),
     page_size: int = Query(20, ge=1, le=MAX_PAGE_SIZE),
+) -> HistoryPage:
+    return history_page(session, user.id, page, page_size)
+
+
+def watchlist_page(
+    session: Session, user_id: int, page: int, page_size: int
 ) -> MoviePage:
-    base = (Interaction.user_id == user.id, Interaction.kind == "watchlist")
+    base = (Interaction.user_id == user_id, Interaction.kind == "watchlist")
     total = session.execute(
         select(func.count()).select_from(Interaction).where(*base)
     ).scalar_one()
@@ -143,3 +146,13 @@ def watchlist(
     return MoviePage(
         items=[movies[i] for i in ids], page=page, page_size=page_size, total=int(total)
     )
+
+
+@router.get("/watchlist", response_model=MoviePage)
+def watchlist(
+    user: CurrentUser,
+    session: SessionDep,
+    page: int = Query(1, ge=1),
+    page_size: int = Query(20, ge=1, le=MAX_PAGE_SIZE),
+) -> MoviePage:
+    return watchlist_page(session, user.id, page, page_size)
