@@ -24,7 +24,7 @@ intervals, and a harness that compares all methods on the validation period), te
 notebook; MovieLens data in `data/raw/` (git-ignored). Gates 1 and 2 are approved. Phase 3 is in
 progress: Step 15 (validation-only tuning, `pmrs.evaluation.tuning`, MLflow via `mlflow-skinny`) has
 run and its proposed frozen settings await owner approval (D-029; D-030 sets pure popularity
-for 1-10 ratings and the cold-start simulation, 10+ hybrid for warm users); Step 16 (the single test read, `pmrs.evaluation.final`, D-032) has run and awaits owner review; the test period must not be read again or used to tune; Step 17 (D-033: `evaluated_step16` and all-data `serving_all_data` artifacts, `MODEL_CARD.md` draft) is built and awaits the owner's Gate 3 review; the Step 16 metrics apply only to the evaluated artifact. No API or UI yet. Strict mypy passes; scikit-learn is untyped, so
+for 1-10 ratings and the cold-start simulation, 10+ hybrid for warm users); Step 16 (the single test read, `pmrs.evaluation.final`, D-032) has run and awaits owner review; the test period must not be read again or used to tune; Step 17 (D-033: `evaluated_step16` and all-data `serving_all_data` artifacts, `MODEL_CARD.md` draft) is built and awaits the owner's Gate 3 review; the Step 16 metrics apply only to the evaluated artifact. Gate 3 is approved (D-034): the ML core is frozen for V1 (configuration, artifacts, Step 16 results and limits; do not change models or the evaluation protocol on these results). Phase 4 chunk 4A (D-035: `pmrs.db`, Alembic, seed, `compose.yaml`) is built and verified (D-036: migrations, seed twice, 610 users, 9,742 movies, 100,836 ratings; `postgres:17-alpine` on loopback port 5433); chunk 4B (Steps 20-22, D-037: `pmrs.api` accounts, public catalogue, interactions, `DELETE /me`) is built and verified on the test database, for local use only (no rate limiting or HTTPS: do not expose it publicly); chunk 4C (recommendations, dashboard, analytics) has not started. No API or UI yet. Strict mypy passes; scikit-learn is untyped, so
 its values are `Any` via one approved override (D-025). The code defaults are still the provisional
 untuned values (D-026); the tuned values exist only in the proposed config file until the owner
 freezes them. A `.joblib` artifact is a pickle: load only
@@ -129,6 +129,10 @@ uv run python -m pmrs.evaluation   # compare all methods on the VALIDATION perio
 uv run python -m pmrs.evaluation.tuning   # Step 15: 36 validation-only trials; writes data/processed/tuning/ and mlruns/ (~1 min)
 uv run python -m pmrs.evaluation.final --target validation   # Step 16 dry run (the test read, already done once, needs --read-test-once and refuses a repeat)
 uv run python -m pmrs.evaluation.serving verify   # Step 17: check both artifacts (build refuses to overwrite; they already exist)
+docker compose up -d db   # Step 18: this project's Postgres on loopback port 5433 (not the other project's 5432)
+uv run alembic upgrade head   # create the tables (needs the database up and .env)
+uv run uvicorn pmrs.api.app:create_app --factory   # Step 20-22: the API on localhost (needs .env with JWT_SECRET and the database up)
+uv run python -m pmrs.db.seed   # Step 19: load MovieLens, then verify against the CSVs; safe to run twice
 uv run python -m pmrs.evaluation.selection   # Step 15: apply the owner's choices (D-030), write the proposed config, run the routing checks
 ```
 Add new commands here only once they work.

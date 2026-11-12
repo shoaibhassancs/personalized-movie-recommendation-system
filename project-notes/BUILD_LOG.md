@@ -14,6 +14,15 @@ entry-level AI/ML interview.
 ---
 
 ## Current status (2026-11-12)
+- **Phase 4, chunk 4B (Steps 20-22) is built and verified (D-037):** registration and login, profile,
+  genres, the public catalogue with search/filters/sorting/paging, ratings and the like, dislike,
+  watchlist, watched and viewed actions, history, and deleting your own account. Local use only: it
+  must not be exposed publicly until rate limiting and HTTPS exist. Chunk 4C (recommendations,
+  dashboard, analytics) has not started and awaits your approval.
+- **Phase 4, chunk 4A (Steps 18-19) is complete and verified (D-035, D-036).** The Postgres database runs
+  locally on loopback port 5433, the schema migrates up and down, and the MovieLens data is loaded
+  (610 historical users, 9,742 movies, 100,836 ratings) and verified identical to the CSVs. Chunk 4B
+  (authentication, catalogue, interactions) has not started and awaits your approval.
 - **Step 17 done (D-033):** two local artifacts built and verified (evaluated Step 16 fit and an
   all-data serving fit), with SHA-256 manifests, plus a draft `MODEL_CARD.md`. Step 16 metrics apply to
   the evaluated model only. **Awaiting your Gate 3 review.** Step 16 (D-032) results are unchanged.
@@ -27,7 +36,7 @@ entry-level AI/ML interview.
   now frozen (first bullet above; they were proposed when Step 15 finished). Step 16 has run (single test read); Step 17 is built (D-033); Gate 3 awaits you.**
 - What exists: everything from Phase 2, the metrics and evaluation packages, and
   `uv run python -m pmrs.evaluation.tuning`, which tries 36 configurations in about a minute and logs
-  each to MLflow and to CSV/JSON. 224 tests pass.
+  each to MLflow and to CSV/JSON. 258 tests pass (none skipped while the database is running).
 - **The test period has been read once (Step 16).** It stays protected in code; only `pmrs.evaluation.final` can read it and it refuses a second read.
 - **The evaluation claim is narrow:** a per-user holdout, so results support only "methods
   compared under the same per-user holdout protocol", not "leakage-safe" or "predicts the future".
@@ -1054,3 +1063,156 @@ recomputed NOT RUN (not needed, and the test period stays read once). `uv sync` 
 
 **Interview questions.** Why can the serving model not be scored? What does a hash manifest protect
 against, and what can it not? Why keep an evaluated artifact as well?
+
+---
+
+## Phase 4A · Database schema and seed, code written (Steps 18-19, 2026-11-12)
+
+**Where this stands.** Gate 3 is approved, so the models, evaluation protocol, artifacts and results are
+frozen and were not touched. Chunk 4A adds the database the app will keep users and ratings in. Everything
+that can be built without a running database is built and checked; everything that needs PostgreSQL is
+NOT RUN, because the Postgres image has not been pulled yet.
+
+**What was added.** A `pmrs.db` package with the six tables from the architecture document (users,
+movies, user genres, ratings, interactions, recommendation events); an Alembic migration that creates them
+and can remove them again; a seed command (`uv run python -m pmrs.db.seed`); a Docker Compose file that
+runs only the Postgres database on the loopback address; an `.env.example` listing setting names with no
+values; and tests. A real `.env` with a random password was created locally. It is git-ignored and the
+password was never printed or written anywhere else.
+
+**Historical users cannot log in.** The 610 MovieLens people are stored as `is_historical` users. The
+important part is a rule inside the database itself: a historical user must have no email and no password
+hash, and a registered user must have both. Even if later code has a bug, the database will not store a
+credential for a historical user, so there is nothing to sign in with. Login code in Step 20 must also look
+users up by email only. Their original MovieLens ids sit in their own column, apart from the table's key.
+
+**Ratings and timestamps.** One shared ratings table holds historical and future ratings. Each rating is
+a half-star value from 0.5 to 5, one row per user and movie, with the original MovieLens time converted
+exactly from Unix seconds, not the import time. Emails must be lower-case.
+
+**Seeding twice.** Every insert does nothing if the row already exists, inside one transaction. Because
+that could hide a row that differs, a verify step then compares every movie and every rating with the CSV
+data and reports any difference. The second run is expected to add zero rows (tested on a small invented
+dataset only so far).
+
+**A surprise.** Port 5432 on this machine is already used by another project's Postgres, so this
+project's database is mapped to port 5433 and the tests build their own database on that port, so they
+cannot touch the other server.
+
+**Verification.** `uv add` of the four approved packages (plus the prebuilt-library extra of psycopg) PASS.
+ruff check, ruff format and strict mypy (40 files) PASS. pytest: 228 passed, 6 skipped. The 4 database-free
+tests PASS (rows, timestamps, tag text, schema rules, no secret in committed files). Alembic generating the
+migration as SQL text (`--sql`, no database) PASS for both directions; this only shows the script is valid.
+NOT RUN: migrating up and down on an empty database; the constraint tests; the seed on a database; the
+seed twice; the counts against the real dataset; `uv sync --locked`. Docker daemon: running. Image: not
+pulled.
+
+**Not verified.** Everything above that is NOT RUN. The 6 skipped tests are not passes.
+
+**Image and disk figures for your decision.** `postgres:17-alpine`. The exact size was NOT measured,
+because that needs contacting the registry, which I did not do. My estimate from general knowledge,
+unverified: about 100 MB to download and about 250-300 MB on disk, plus a data volume I expect to stay
+under 100 MB for this dataset. Free disk now: 16.3 GiB (it was 17.4 GiB earlier today; the packages I
+installed account for only about 10 MB, so the rest is not explained by this work). Estimated free after
+the pull and seed: about 15.9 GiB. Docker already holds 2.9 GB of other images.
+
+**Interview questions.** Why enforce "historical users cannot log in" in the database and not only in code?
+What makes a seed idempotent, and why also verify afterwards? Why keep the original rating times?
+
+---
+
+## Phase 4A · Database run and verified (Steps 18-19, 2026-11-12)
+
+**What happened.** You approved the image pull, so I pulled `postgres:17-alpine`, started it on loopback
+port 5433 only, and did not connect to the other project's server on 5432. The image took 415 MB on disk
+(116 MB compressed), more than my 250-300 MB estimate. Free disk went from 16.2 GiB to 14.8 GiB after the
+pull and the seed, a larger drop than the image and the 92 MB volume explain, so some of it is unexplained;
+it stayed well above your 10 GiB limit.
+
+**Tests on the separate test database.** The 6 tests that had been skipped now ran against a throwaway
+`pmrs_test` database that the test fixture creates and drops (it refuses to run unless the name ends in
+`_test` and differs from the dev database). They show: the migration goes up and down on an empty database
+and up again; the migration matches the models exactly; the database refuses a historical user with an
+email or password hash, a registered user without them, an upper-case email, a duplicate rating, ratings
+of 3.3, 0 or 5.5, a duplicate interaction and an unknown interaction kind; seeding adds data once, keeps the
+original timestamps and adds nothing the second time; a changed rating or title is noticed by the verify
+step; and seeding leaves a registered user alone.
+
+**Real data on the dev database.** After `alembic upgrade head`, the first seed added 610 users, 9,742
+movies and 100,836 ratings and the verify step found the database identical to the CSV files. The second
+seed added nothing and verified again. All 610 users are historical and none holds an email or password
+hash. 1,572 movies have tag text, equal to the number of distinct movies in the tags file. Spot checks of
+Toy Story, The Matrix and user 1's first rating (4.0, Unix 964982703 = 2000-07-30 18:45:03 UTC) match the
+CSV.
+
+**Verification.** pull and start: PASS (container healthy). tests/test_db.py: 10 passed, 0 skipped: PASS.
+Migration up and down: PASS. Migration matches models: PASS. Constraints: PASS. Seed once, seed twice:
+PASS. Dataset counts and spot checks: PASS. Full suite 234 passed; ruff check and format, strict mypy
+(40 files): PASS. NOT RUN: `uv sync --locked`; downgrading the dev database (only the test database was
+taken down and up).
+
+**Not verified.** Login behaviour (no login code exists yet); behaviour with several people at once; the
+speed of queries. Whether a later Docker Desktop restart keeps the volume (not tested).
+
+**Interview questions.** Why test migrations against a throwaway database? How do you check a seed did
+not silently skip or alter rows? Why does the image use more disk than its download size?
+
+---
+
+## Phase 4B · Accounts, catalogue and interactions (Steps 20-22, 2026-11-12)
+
+**What this adds.** A working web API with no screen yet. You can register, log in, pick favourite
+genres, browse and search the 9,742 movies without logging in, and (once logged in) rate movies, like,
+dislike, watchlist, mark watched, record a view, read your history and delete your own account. It reads
+and writes the database from Steps 18-19 and does not touch the recommender: recommendations are chunk 4C.
+I re-read the architecture and the database code first; the existing cascades and the unique key on
+interactions already covered every route, so there was no schema change and no migration.
+
+**Accounts.** Passwords are hashed with Argon2id and must be 15 to 128 characters; spaces and non-English
+letters are fine, nothing is trimmed, and a 128-character password is not cut short (a test logs in with
+the first 72 characters and is refused). A login gets a signed token that lasts 60 minutes. There is no
+refresh and no server-side logout, so logging out means the app throws the token away. The signing secret
+comes from `JWT_SECRET`, which I generated with Python's secure random generator and put only in your
+git-ignored `.env`; the app refuses to start without a secret of at least 32 characters. Error replies
+for invalid input do not repeat what was typed, which matters because FastAPI's default would have sent a
+rejected password back.
+
+**Historical MovieLens users.** They cannot log in: the database holds no email or password for them,
+login only looks users up by email, and a token naming a historical user is refused as a second layer.
+No route takes a user id, so every action applies to the person in the token. Responses show only
+aggregates for historical data (a movie's average and count), never an individual MovieLens user or their
+ratings. A test forges a valid token for a historical user and shows that reading, editing, rating and
+deleting are all refused and nothing in the database changes. I also temporarily removed the guard to
+confirm that test fails without it, then restored it.
+
+**Deleting an account.** `DELETE /me` removes the caller's user row, and the database cascades to their
+ratings, interactions, genres and events. The test shows another user's data, the 610 historical users
+and their ratings, and the movies are untouched, the old token stops working, and the email can be
+registered again.
+
+**Catalogue.** Title search treats `%` and `_` as plain characters. Filters: genre, year range and a
+minimum average rating; sorts: title, year, rating, popularity; pages of up to 50. Average rating counts
+every rating in the database, MovieLens plus app ratings. Rating filters and sorts only count movies with
+at least 5 ratings, so a movie with two 5.0s does not top the list; the others follow after, by rating
+count. Posters are placeholders drawn from the title (initials and a colour number), with no image files.
+
+**Actions.** Everything is an update or a delete, so repeating an action never duplicates a row and
+removing something that is not there is not an error. Rating, watched and watchlist are independent. Like
+and dislike replace each other (my reading of your list; see D-037 to correct me). Updating a rating sets
+its time to now. A repeated view refreshes the time; the schema cannot count views.
+
+**Verification.** `uv add` of the approved packages PASS. 24 API tests on the separate test database PASS
+(register, duplicate, password lengths, token problems of seven kinds, historical protection, isolation,
+deletion, hand-checked sorts, filters and pages, rating rules, repeated actions, history). Full suite 258
+passed, 0 skipped PASS. ruff, ruff format, strict mypy (51 files) PASS. `uv sync --locked` PASS. Manual
+walkthrough by script against a throwaway copy of the real data in the test database PASS; the dev
+database was untouched and the server log held no secret or token. Query times on the real data were
+25-34 ms for list/search/filter/sort and 4 ms for one movie (median of 15, local, one user: not a load
+test). NOT RUN: any test of rate limiting or HTTPS (they do not exist); behaviour with many users at once.
+
+**Not verified / limits.** This is not a security audit. There is no login throttling, so passwords can be
+guessed without limit: keep it local. A stolen token works until it expires. Registration reveals which
+emails exist. CORS is not set up yet. The documentation pages at `/docs` are on.
+
+**Interview questions.** Why is a historical user safe from being logged in as, in more than one place?
+Why must validation errors not echo the input? What does idempotent mean for a PUT, and how did you test it?

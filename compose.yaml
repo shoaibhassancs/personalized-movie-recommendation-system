@@ -1,0 +1,22 @@
+# Local development database only (Phase 4A). The API and frontend join this file in Step 31.
+# Settings come from .env (git-ignored); copy .env.example to .env and fill in a password.
+services:
+  db:
+    image: postgres:17-alpine
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:?set POSTGRES_USER in .env}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env}
+      POSTGRES_DB: ${POSTGRES_DB:?set POSTGRES_DB in .env}
+    ports:
+      # loopback only, and 5433 because another project's Postgres may hold 5432
+      - "127.0.0.1:5433:5432"
+    volumes:
+      - pmrs_pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+volumes:
+  pmrs_pgdata:

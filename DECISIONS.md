@@ -729,3 +729,96 @@ exists). Step 1 still has to finish its other work, so it is **not** marked done
 - **Not done / limits:** Step 16 test metrics were NOT recomputed (NOT RUN, by design); the serving
   artifact has no metric; exactly 11 ratings still not evaluated. Diagnostic: lists differ for all 40
   sampled users, mean top-10 overlap 0.60. No Git command run. Gate 3 awaits the owner.
+
+## D-034 · 2026-11-12 · Owner decision · Gate 3 approved: ML core frozen for V1
+- **Owner decision:** Gate 3 is approved. The Step 16 evaluation (`docs/evaluation.md`) is accepted.
+  The ML core is frozen for V1 with the recorded configuration (hash `e68a7ee6...ce2b5`, D-031), the
+  artifacts `evaluated_step16` and `serving_all_data` (D-033), the Step 16 results (D-032) and their
+  limitations. Models and the evaluation protocol are not to be changed on the basis of these results.
+- **Limitations carried forward:** results compare methods under the same per-user holdout protocol and
+  do not establish leakage-safe future prediction; the cold-start numbers are the popularity fallback;
+  exactly 11 ratings was not evaluated; the serving artifact has no metric.
+- **Not started:** Phase 4. No other change made for this record.
+
+## D-035 · 2026-11-12 · Execution · Phase 4, chunk 4A (Steps 18-19): database and seed, code written
+- **Owner decisions (approved):** chunk 4A only (no auth, catalogue, interactions, recommendations or
+  dashboard); SQLAlchemy, Alembic, psycopg and pydantic-settings; one shared `ratings` table (as in
+  ARCHITECTURE.md); MovieLens users are clearly historical non-login users and future authentication
+  must not be able to sign in as one; original MovieLens rating timestamps are kept; no Postgres image
+  is pulled until the owner approves after seeing size and disk figures.
+- **Built (not yet run against a database):** `pmrs.db` (`models`, `settings`, `seed`), Alembic setup
+  (`alembic.ini`, `migrations/`, revision 0001), `compose.yaml` (Postgres 17 alpine, loopback port
+  5433), `.env.example` (names only), `tests/test_db.py` (10 tests; 6 need the test database).
+- **Design choices (mine, for review):** (1) historical users are separated by an `is_historical` flag
+  AND a database CHECK constraint: a historical row must have a `movielens_user_id` and no email and no
+  password hash, and a registered row must have both; the database refuses anything else, so no login
+  credential can exist for a historical user. Step 20 must additionally look users up by email only.
+  (2) `users.id` is the table's own key; the MovieLens id is a separate unique column. (3) Emails must be
+  lower-case (check constraint). (4) Ratings are `numeric(2,1)` with a half-star 0.5-5 check, key
+  (user, movie), `rated_at` timestamptz built from the original Unix seconds. (5) Seeding inserts
+  with "do nothing on conflict" in one transaction, then `verify` compares every movie and rating with
+  the CSV data, so a silently different row is reported. (6) Host port 5433, because another Postgres
+  (not this project's) already listens on 5432.
+- **Dependency note:** `psycopg[binary]` was installed (the `[binary]` extra adds prebuilt wheels so no
+  system libpq is needed); resolved alembic 1.20.1, psycopg 3.3.8, pydantic-settings 2.16.2,
+  sqlalchemy 2.1.8. No other dependency; pydantic was already present.
+- **Not run:** every check that needs PostgreSQL (migrate up/down, constraints, seeding twice, counts).
+  The image `postgres:17-alpine` has NOT been pulled; waiting for the owner.
+- **Unchanged:** split, recommender, evaluation results and artifacts. No Git command run.
+
+## D-036 · 2026-11-12 · Execution · Phase 4, chunk 4A (Steps 18-19) run and verified
+- **Owner decisions (approved):** pull `postgres:17-alpine`; `psycopg[binary]` accepted as the
+  implementation of the approved psycopg; the other project's PostgreSQL on port 5432 is not to be
+  contacted (it was not; this project's database uses loopback port 5433).
+- **Measured:** image 415 MB on disk (116 MB compressed content), above my 250-300 MB estimate. Database
+  files 88 MB; Docker volume 92 MB. Free disk 16.16 GiB after the pull, 14.80 GiB after seeding (the
+  drop is larger than the image and volume together; the rest is not explained by this work). Above the
+  10 GiB stop limit throughout.
+- **Result:** all database checks PASS. Tests used only the separate `pmrs_test` database. On the dev
+  database `pmrs`: migration 0001 applied; the first seed added 610 users, 9,742 movies and 100,836
+  ratings and verified identical to the CSVs; the second seed added 0 of each and verified again.
+  Counts: 610 users (all historical, 0 with an email or password hash), 9,742 movies, 100,836 ratings,
+  1,572 movies with tag text (equals the number of movies in `tags.csv`). Spot checks: Toy Story and
+  The Matrix rows match; user 1's rating of movie 1 is 4.0 at 2000-07-30 18:45:03 UTC = Unix 964982703,
+  the CSV value, so original timestamps are kept.
+- **Steps 18 and 19 are complete.** Chunk 4B (Steps 20-22) has not started.
+- **Unchanged:** split, recommender, evaluation results, artifacts, protocol. No Git command run.
+
+## D-037 · 2026-11-12 · Execution · Phase 4, chunk 4B (Steps 20-22): accounts, catalogue, interactions
+- **Owner decisions (approved):** dependencies FastAPI, uvicorn, argon2-cffi, PyJWT and dev-only httpx;
+  the catalogue is readable without login, everything user-specific needs a token; 60-minute access
+  tokens, no refresh token, no server-side logout, and the API is local only: **do not expose it
+  publicly until rate limiting and HTTPS are addressed**; Argon2id with a password minimum of 15 and
+  maximum of 128 characters, passphrases allowed, never silently truncated; `JWT_SECRET` from a
+  cryptographically secure generator, never printed or logged; rating, watched, watchlist, like and
+  dislike are independent actions; the 5-rating minimum for rating-based sorting stays; `DELETE /me`
+  added (own account only, never a historical user); the manual walkthrough used the test database.
+- **Interpretation to confirm:** I kept like and dislike mutually exclusive (liking replaces a dislike
+  and the reverse), as in the proposal's table, while rating, watched, watchlist and like/dislike
+  stay independent of each other. If you meant that a movie may be liked and disliked at once, say so.
+- **Schema:** no change. Cascading deletes and the unique (user, movie, kind) key already existed.
+  Seed, recommender, evaluation, artifacts and protocol are unchanged.
+- **Built:** `pmrs.api` (`app`, `settings`, `security`, `deps`, `schemas`, `catalogue`, `auth`, `me`,
+  `movies`, `actions`), `tests/conftest.py` (shared throwaway-database fixture; `test_db.py` now uses it),
+  `tests/test_api.py` (24 tests). Run: `uv run uvicorn pmrs.api.app:create_app --factory`.
+- **Routes:** `POST /auth/register|login`; `GET/PUT/DELETE /me`, `PUT /me/genres`, `GET /me/history`,
+  `GET /me/watchlist`; `GET /movies`, `GET /movies/{id}`; `PUT|DELETE /movies/{id}/rating|like|dislike|
+  watchlist|watched`; `POST /movies/{id}/view`. No route takes a user id.
+- **Rules (mine, for review):** registration lower-cases the email and returns 409 for a duplicate
+  (this reveals that an email exists; accepted for the demo). Login uses the same answer and the same
+  hashing work for an unknown email and a wrong password. A rating update sets `rated_at` to now.
+  Sorting by rating puts movies with at least 5 ratings first; the rest follow by rating count.
+  A repeat `viewed` only refreshes the time (the schema cannot count views). 422 responses do not echo
+  submitted values, so a rejected password is never returned. A token that names a historical user is
+  refused.
+- **Results (test database only):** 24 API tests PASS; full suite 258 passed, 0 skipped; ruff, ruff
+  format, strict mypy (51 files) PASS; `uv sync --locked` PASS. A deliberate break (removing the
+  historical-user guard) made the historical test fail, and it passed again once restored. Manual
+  walkthrough on a throwaway copy of the real data in `pmrs_test` PASS (dropped afterwards; the dev
+  database was untouched: 610 users, 0 registered, 100,836 ratings, 9,742 movies). Query times on the
+  real data, median of 15: list 26.6 ms, search 34.3 ms, genre+year 32.3 ms, sort by rating 29.1 ms,
+  by popularity 25.0 ms, detail 3.8 ms (local, one user, one process; not a load test).
+- **Not done / limits:** no rate limiting, no HTTPS, no token revocation (a deleted user's token stops
+  working because the user is gone, but a stolen token of a live user works until it expires); CORS not
+  configured (frontend phase); recommendations, dashboard and analytics (chunk 4C) not started. A
+  Starlette warning recommends `httpx2` for the test client; not installed (unapproved).

@@ -4,11 +4,19 @@ version = "0.1.0"
 description = "Personalized Movie Recommendation System"
 requires-python = "==3.12.*"
 dependencies = [
+    "alembic>=1.20.1",
+    "argon2-cffi>=25.1.0",
+    "fastapi>=0.162.5",
     "joblib>=1.6.0",
     "numpy>=2.5.4",
     "pandas>=3.1.1",
+    "psycopg[binary]>=3.3.8",
+    "pydantic-settings>=2.16.2",
+    "pyjwt>=2.15.1",
     "scikit-learn>=1.9.1",
     "scipy>=1.18.1",
+    "sqlalchemy>=2",
+    "uvicorn>=0.54.0",
 ]
 
 [build-system]
@@ -35,6 +43,7 @@ strict = true
 
 [dependency-groups]
 dev = [
+    "httpx>=0.28.1",
     "ipykernel>=7.4.0",
     "mlflow-skinny>=3.18.0",
     "mypy>=2.4.1",

@@ -266,32 +266,32 @@ Purpose: persistent users and interactions, and an API over the same recommender
 Packages: fastapi, uvicorn, sqlalchemy, alembic, psycopg, pydantic-settings, a password-hash
 library, a JWT library, httpx (tests). Docker for Postgres.
 
-**Step 18. PostgreSQL and schema**
+**Step 18. PostgreSQL and schema** (built and verified 2026-11-12; D-035, D-036)
 - Goal: dev database. Needs: 1; Docker daemon running. Method: Docker Compose Postgres; SQLAlchemy
   2 models and Alembic migrations for users, movies, ratings, interactions (like/dislike,
   watchlist, watched, viewed), user favourite genres, recommendation events.
 - Output: schema + migration. Done when: migrate up/down works on an empty DB.
 - Risk: disk (Postgres image); check space first.
 
-**Step 19. Seed pipeline**
+**Step 19. Seed pipeline** (built and verified 2026-11-12; D-035, D-036)
 - Goal: load MovieLens into the DB. Needs: 3, 18. Method: idempotent script; MovieLens users
   flagged historical (cannot log in).
 - Output: seed command. Done when: DB counts equal dataset counts; running twice changes nothing.
 
-**Step 20. FastAPI app and authentication**
+**Step 20. FastAPI app and authentication** (built and verified 2026-11-12; D-037)
 - Goal: register, login, profile, genre preferences. Needs: 18. Method: hashed passwords, JWT
   access tokens, settings from environment variables, test database fixtures.
 - Output: auth endpoints + tests. Done when: tests cover duplicate email, wrong password,
   expired/invalid token, and access to another user's data denied.
 
-**Step 21. Catalogue API**
+**Step 21. Catalogue API** (built and verified 2026-11-12; D-037)
 - Goal: browse/search/filter. Needs: 19, 20. Method: paginated list, title search, genre/year/
   rating filters, sort, detail endpoint with average rating and count; placeholder poster
   generated from title/genre.
 - Output: endpoints + tests. Done when: filter combinations return the expected rows on a small
   seeded fixture.
 
-**Step 22. Interaction API**
+**Step 22. Interaction API** (built and verified 2026-11-12; D-037)
 - Goal: rate, like/dislike, watchlist, watched, history. Needs: 20, 21. Method: upserts;
   validation (0.5–5 in 0.5 steps); history lists.
 - Output: endpoints + tests. Done when: repeated actions update rather than duplicate; users see
