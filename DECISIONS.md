@@ -983,3 +983,24 @@ database. Not measured: a real browser.
 Limits: the 5B pages have not been seen rendered by me (no screenshot tool); the walkthrough ran in
 jsdom. No load, security or many-user test. `npm audit` was not run. The 5A and 5B text, spacing and
 phone layout were checked by the owner only for 5A.
+
+## D-044 (2026-11-12): Phase 5B browser review passed; Gate 5 approved
+Owner decision. The owner completed the Phase 5B browser review in light and dark mode and at phone
+width. Recommendations, Dashboard and Analytics all looked good and no visual changes were requested.
+The browser review is recorded as **PASS (owner-reported)**: I did not see the pages myself, and the
+earlier "not seen by me" note in D-043 is now settled by the owner's review, not by my own check. **Gate 5
+is approved**, so Phase 5 (Steps 25-30) is complete. Gate 5 reads "a person can complete the nine-point
+final deliverable list locally"; the approval is the owner's judgement, and I did not separately re-check
+that list.
+
+Unchanged and still binding: the API stays local only (no rate limiting, HTTPS or login throttling;
+account deletion asks for no password), the frozen ML core and its claim limit, the serving artifact's
+lack of any quality metric, "served" wording, and the deferral of the analytics genre breakdown
+(owner-approved, D-043). No application code was changed for this decision. Phase 6 (delivery, Steps
+31-35) has not started and needs its own approval.
+
+Cleanup done with it: with no API or frontend server running (checked: nothing listening on 8000, 8001 or
+5173), the target was verified to be exactly `pmrs_test` (and the development database exactly `pmrs`),
+it had 0 open connections, and only `pmrs_test` was dropped. Afterwards the server lists only `pmrs`. The
+development database was not connected to or changed. The unidentified process that had been listening on
+port 8000 earlier is no longer running; what it was connected to was never determined.
