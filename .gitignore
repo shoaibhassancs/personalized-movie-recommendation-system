@@ -46,3 +46,7 @@ node_modules/
 # OS and editor files
 .DS_Store
 .idea/
+
+# local notes and editor settings
+/project-notes/
+/.vscode/
