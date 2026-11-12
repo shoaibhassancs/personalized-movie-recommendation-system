@@ -9,6 +9,7 @@ from typing import Self
 import numpy as np
 
 from pmrs.recommender.base import FitData, FloatArray, History, Scorer
+from pmrs.recommender.explain import Evidence
 
 DEFAULT_PRIOR_STRENGTH = 10.0  # provisional; tuned on validation only (Step 15)
 
@@ -40,6 +41,9 @@ class RandomScorer(Scorer):
         rng = np.random.default_rng([self.seed, *np.sort(history.items).tolist()])
         return rng.random(len(self.item_map))
 
+    def evidence(self, history: History, item: int) -> Evidence:
+        return Evidence("random")
+
 
 class PopularityScorer(Scorer):
     """Global popularity: the number of fit ratings each movie has."""
@@ -53,6 +57,9 @@ class PopularityScorer(Scorer):
 
     def score(self, history: History) -> FloatArray:
         return self.counts.copy()
+
+    def evidence(self, history: History, item: int) -> Evidence:
+        return Evidence("popularity", count=int(self.counts[item]))
 
 
 class BayesianAverageScorer(Scorer):
@@ -72,6 +79,7 @@ class BayesianAverageScorer(Scorer):
     def fit(self, data: FitData) -> Self:
         self.item_map = data.item_map
         counts, sums = _ItemCounts.of(data)
+        self.counts = counts
         total = counts.sum()
         self.global_mean = float(sums.sum() / total) if total > 0 else 0.0
         m = self.prior_strength
@@ -86,3 +94,10 @@ class BayesianAverageScorer(Scorer):
 
     def score(self, history: History) -> FloatArray:
         return self.values.copy()
+
+    def evidence(self, history: History, item: int) -> Evidence:
+        return Evidence(
+            "overall_rating",
+            value=float(self.values[item]),
+            count=int(self.counts[item]),
+        )

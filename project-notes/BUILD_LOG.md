@@ -14,21 +14,17 @@ entry-level AI/ML interview.
 ---
 
 ## Current status (2026-11-12)
-- **Phase 1 is complete (Gate 1 approved by you). Phase 2 Chunk A (Steps 6 to 9) is built;
-  Chunk B (Steps 10 to 12) and Gate 2 have not started.**
-- What exists: the planning documents, `CLAUDE.md`, `DECISIONS.md`; a Python 3.12 project with
-  pandas, numpy, SciPy, scikit-learn and development tools; the MovieLens `ml-latest-small` data in
-  `data/raw/`; data loaders; the exploration notebook; the evaluation split package `pmrs.split`;
-  and the new `pmrs.recommender` package with four model families (baselines, content-based,
-  item-kNN, SVD) and 105 passing tests in total.
-- Not built yet: the hybrid and cold-start logic, explanations, the final `Recommender` class
-  and saved model files, evaluation metrics, database, API or website.
-- **All checks pass.** The earlier strict-mypy failure was resolved by your approved override for
-  scikit-learn (see "Steps 6 to 9 follow-up" below and D-025).
-- **The evaluation claim is narrow:** a per-user holdout, so results support only "methods compared
-  under the same per-user holdout protocol", not "leakage-safe" or "predicts the future". No model
-  has been scored yet, so no result exists to which this applies.
-- **Next:** your review of Chunk A, then approval for Chunk B.
+- **Phase 1 and Phase 2 are complete (Gates 1 and 2 approved by you). Phase 3 has started:
+  Steps 13 (metrics) and 14 (evaluation harness) are built and verified. Steps 15 to 17 are not
+  started: Step 15 is waiting for your decision on MLflow (a new dependency) and the tuning plan.**
+- What exists: everything from Phase 2, plus `pmrs.metrics` and `pmrs.evaluation`, one command
+  (`uv run python -m pmrs.evaluation`) that compares all eight methods on the **validation**
+  period, and a first set of untuned validation results. 199 tests pass.
+- **No test-period number exists yet.** The test period is protected in code and was not read.
+- **The evaluation claim is narrow:** a per-user holdout, so results support only "methods
+  compared under the same per-user holdout protocol", not "leakage-safe" or "predicts the future".
+- **Next:** your decisions for Step 15 (see the last note below); then tuning on validation only,
+  freezing the settings, and only then the single test-period read in Step 16.
 
 ---
 
@@ -555,3 +551,292 @@ tests (TF-IDF features, SVD fold-in, empty-vocabulary cases), which run the real
 - `uv sync`: **PASS**. Not re-run: the full smoke run for all models (code unchanged), the notebook.
 
 **Not verified:** scikit-learn call types (by design, see above); model quality (Phase 3).
+
+## Steps 10 to 12 — Hybrid ladder, explanations, one Recommender (Phase 2, Chunk B, 2026-11-12)
+**What it was for:** to turn the four models into one thing you can ask for recommendations: it
+copes with a brand-new user, says *why* each movie is suggested, and can be saved and reloaded.
+Like Chunk A, it measures no accuracy.
+
+**What happened first, and what the failures meant.** An earlier attempt left the code in two
+halves that did not fit together. The `Recommender` class expected the explanation module to offer
+one set of tools (a `Catalog`, and helper functions named like `content_evidence`), while the
+explanation module and the models offered a different set (each model reports its own evidence;
+one function turns evidence into a sentence). Also, the explanation file had been overwritten
+without being read first, so the original text is gone (the replacement was rebuilt from the
+design, not restored). The tools showed this plainly:
+- **mypy: 15 errors, all one cause.** "Module has no attribute `Catalog`", "`Evidence` has no
+  attribute `sentence`", and so on. mypy was saying: these two files disagree about the shape of
+  the data they pass each other. That is exactly the kind of mismatch it exists to catch.
+- **Ruff: 12 findings.** Eleven were lines a character or two over the 88 limit; one was a
+  `zip()` without an explicit length check. Cosmetic, but the project requires them clean.
+- **pytest: 105 passed,** but that only meant Chunk A still worked: no test touched Chunk B yet.
+  A passing suite there said nothing about the new code.
+
+**How it was fixed (one design).** Each model keeps producing its own evidence, because the model
+knows why it scored a movie. A single function (`render`) is the only place that writes sentences,
+so a sentence can only mention things that were in the evidence. The `Recommender` asks the model
+for evidence and calls `render`. I changed `recommender.py` to use that, added a small `Catalog`
+(titles and genres) to the explanation module, and fixed the lint items. No scoring behaviour, no
+split rule and no dependency changed.
+
+**How it works.**
+- **The ladder (Step 10, `hybrid.py`).** Zero ratings: with favourite genres, movies are ranked by
+  60% "has the genres you picked" plus 40% popularity; with no genres, by popularity alone. One to
+  nine ratings: a blend leaning on the content model (60% content, 15% kNN, 15% SVD, 10%
+  popularity) because neighbours and latent factors need more history. Ten or more: a more even
+  blend (35 / 25 / 25 / 15). Each method's scores are first stretched to 0-1 *for this user, over
+  only the movies they have not rated*, so a method with big raw numbers cannot drown out the
+  others, and a movie a method knows nothing about counts as 0 for it. **Every number is a
+  provisional guess, not tuned, and none of it is evidence of quality.**
+- **Explanations (Step 11, `explain.py`).** Fixed templates. Content: "Because you rated X (5) and
+  it shares the genres …". kNN: "Other viewers' ratings of this movie tend to move together with
+  their ratings of X". SVD: "It fits your overall rating pattern (a statistical match)", kept
+  modest on purpose. Popularity and the genre fallback say outright that they are *not* based on
+  your taste. In the blend, the sentence comes from the method that contributed most and has real
+  evidence; popularity is the last resort. A sentence shows at most five shared tags. A sentence
+  describes what the mechanism did; it is not proof of why you would like the movie.
+- **One interface (Step 12, `recommender.py`).** `Recommender.fit(...)` fits every model;
+  `recommend(UserProfile, strategy, k)` returns movies with score, sentence and evidence. The
+  profile is the user's ratings (raw MovieLens ids) and optional favourite genres (used only with
+  zero ratings). A rated movie is never returned and nothing else is filtered out: that is the
+  D-023 candidate rule, now tested for every strategy.
+- **Saved models (`artifact.py`).** A folder with `recommender.joblib` and a readable
+  `metadata.json` (date, seed, data fingerprint, counts, library versions, settings, file size and
+  SHA-256). Saving never overwrites. Loading checks size, SHA-256, version and that the metadata
+  matches the model. **Security, plainly: a joblib file is a Python pickle, and loading one can run
+  any code inside it. Only load files this project made. The SHA-256 check catches accidental damage
+  and mix-ups; it cannot protect against someone who can replace both files.**
+- **Command line (`cli.py`).** `build --target validation|test` saves an artifact;
+  `recommend --artifact DIR --ratings 318:5,296:4.5 [--genres …] [--strategy …] -k N` prints a list
+  and always prints the warning above.
+
+**A real bug the new tests found.** The content model's explanation code mixed up a sparse matrix
+(mostly zeros, stored compactly) with a plain array and crashed the first time it ran. Chunk A's
+tests never asked for an explanation, so it had been hiding. One line fixed it (turn the result
+into a normal array first). Scoring was never affected.
+
+**Files changed:** `explain.py`, `hybrid.py`, `recommender.py`, `artifact.py`, `cli.py` (new),
+`smoke.py`, evidence methods in `base.py`, `baselines.py`, `content.py`, `knn.py`, `svd.py`;
+`tests/test_hybrid_recommender.py` (new, 49 tests); `pyproject.toml` and `uv.lock` (`joblib`);
+`CLAUDE.md`, `BUILD_PLAN.md`, `DECISIONS.md` (D-026).
+
+**Verification (2026-11-12):**
+- `uv run pytest`: **PASS**, 154 tests (105 earlier + 49 new). The new ones cover the ladder
+  boundaries (0, 1, 9, 10), blending arithmetic checked by hand, each sentence kind, "no rated movie
+  is ever returned" for all seven strategies, the genre fallback, save-then-load giving identical
+  lists, and catching a changed byte, a cut-off file, a wrong version and mismatched metadata.
+- `uv run ruff check`: **PASS**. `uv run ruff format --check`: **PASS**.
+- `uv run mypy` (strict, 22 files): **PASS**.
+- `uv run python -m pmrs.recommender.smoke` (all models plus the hybrid, real data, validation fit
+  only): **PASS**. Hybrid: fits in about 2 s, artifact 5.5 MB, reloads in about 0.1 s, one list in
+  about 3 ms, peak memory about 540 MB (item-kNN alone peaks near 530 MB; the machine has 8 GB).
+  The saved-and-reloaded model gave identical lists and sentences for all six sample users.
+- CLI on real data: `build --target validation` **PASS**; `recommend` **PASS** (printed the
+  warning and a list with sentences); a second `build` **PASS** (correctly refused to overwrite).
+- `uv sync`: **NOT RUN** in this chunk.
+
+**What the tests prove, and what they do not.** They are *mechanics* tests on small invented
+catalogues: the rules are followed, the arithmetic is right, sentences use only real evidence,
+files round-trip. They are **not** evidence that the recommendations are good. The sample lists
+in the smoke run are a human spot check. Two things worth your eye: (1) a sentence can say
+"because you rated X (2.5)" for a harsh rater, since "liked" means above that user's *own* average;
+(2) the cold-start list at 0 ratings is simply the most popular movies, as designed.
+
+**Not verified / incomplete:** accuracy of any method or the blend (Phase 3); the `test` artifact
+(not built; the test split stays unread until the final refit); other library versions (only a
+warning); the weights and cut-offs, which are untuned. The earlier overwritten explanation file
+cannot be compared with the rebuilt one.
+
+**Interview questions**
+- *Why scale each method's scores per user before blending?* Raw scores live on different scales
+  (counts, similarities, rating gaps); stretching each to 0-1 over the user's own candidates lets
+  the weights mean what they say.
+- *How do you explain a recommendation without making things up?* Each model returns the facts it
+  used and a fixed template turns only those facts into a sentence; the wording also says when a
+  reason is "popular" rather than "your taste".
+- *Why is loading a saved model a security risk?* joblib files are pickles, which can run code on
+  load; so only load files you built, and the checksum only detects accidents.
+- *Why did mypy fail on code that mostly worked?* Two files disagreed about the data passed between
+  them; the type checker found the mismatch before it could crash at run time.
+
+## Steps 10 to 12 follow-up — explanation wording and fuller samples (Gate 2, 2026-11-12)
+**What the problem was.** At Gate 2 you looked at a sentence like "Because you rated 'Waterworld'
+(2.5) and it shares the genres action, adventure and sci-fi" and asked what a 2.5 was doing as a
+reason. The content model builds a user's taste from the movies they rated **above their own
+average**, not from movies they rated highly in absolute terms. For a harsh rater (user 307's
+average is 2.4968) a 2.5 is a relatively good rating, so it counted. The sentence said "because
+you rated X" and left out that comparison, so it read as if you had loved a mediocre-rated movie.
+Nothing was wrong with the scoring; the **wording hid the rule that was actually applied.**
+
+**How it was addressed (wording only; scoring, weights, split and candidate rules untouched):**
+- The content evidence now carries the user's own average and whether the cited movie really beat
+  it. The sentence says so: "Because you rated 'Waterworld (1995)' (2.5), which is above your own
+  average of 2.497, and it shares the genres …".
+- **Fallback wording.** If none of a user's ratings is above their average (for example every
+  rating is the same), the model uses all rated movies. Then the sentence is neutral: "It shares
+  the genres … with 'X', which you rated. None of your ratings is above your own average of 3.00,
+  so this is just the closest of the movies you rated." It no longer says "because you rated",
+  which would imply a liked movie.
+- **A second bug found by the samples.** My first version printed the average to two places, and
+  user 307's average (2.4968) printed as "2.50", giving "rated 2.5, above your own average of
+  2.50", which contradicts itself. The sentence now adds digits until the printed average is
+  visibly below the rating (so "2.497"). Ordinary cases keep two places ("3.40").
+- **Smoke output.** It now shows, for one warm user (user 1), the top 5 from random, popularity,
+  Bayesian, content, item-kNN, SVD and hybrid, each with its sentence; the hybrid for two more
+  warm users; and, for one cold-start simulation user (user 5), the hybrid at 0, 3, 5 and 10
+  revealed ratings. Every list shows the user's average rating, and every list is checked to come
+  back identical from a saved-and-reloaded model. Only pre-cutoff or revealed ratings are used,
+  so no held-out movie is read.
+
+**Files changed:** `explain.py`, `content.py` (evidence only), `smoke.py`,
+`tests/test_hybrid_recommender.py` (6 new tests), this log, `DECISIONS.md` (D-027).
+
+**Verification (2026-11-12):**
+- `uv run pytest`: **PASS**, 160 tests (154 + 6 new). The new tests check: the above-average
+  sentence shows the rating and the average; the fallback sentence is neutral and never says
+  "because you rated"; a 2.5 cited against a mean of 1.5 is explained by that mean; the cited
+  rating is always above the real mean; and a mean that rounds up to the rating gets more digits.
+- `uv run ruff check`: **PASS**. `uv run ruff format --check`: **PASS**. `uv run mypy` (strict,
+  22 files): **PASS**.
+- `uv run python -m pmrs.recommender.smoke` (all models and the hybrid, real data, validation fit
+  only): **PASS**. All 14 saved-and-reloaded lists were identical to the originals (0 differences).
+- Quality metrics: **NOT RUN** (Phase 3). `uv sync`: **NOT RUN**.
+
+**What the samples show, and what they cannot.** They show that the ladder rungs behave as
+designed (0 revealed = popularity only; 3 and 5 = content-led; 10 = the balanced blend, where a
+neighbour-based sentence appears), that sentences name only real rated movies, real shared genres
+and tags, and the user's real average, and that no rated movie is suggested. They cannot show that
+the recommendations are good: they are a handful of lists read by eye, nothing was scored against
+held-out ratings, and the weights are untuned guesses. The neutral fallback wording was only
+exercised by the tests, not by any real sample user (none of the sample users has all-equal
+ratings). The item-kNN and SVD sentences also name movies the user rated above their own average
+but do not call them liked ("move together with", "closest to"); I did not change them.
+
+**Not verified / incomplete:** recommendation quality; whether you find the longer sentence
+better to read; the `test` artifact (still not built).
+
+## Steps 13 and 14 — Metrics and the evaluation harness (Phase 3, 2026-11-12)
+**What it was for:** until now every recommender was checked by eye. These two steps put numbers
+on them in a fair, repeatable way, so methods can be compared against simple baselines with
+honest error bars. No new library was needed.
+
+**Step 13, the metrics (`pmrs.metrics`), in plain words.** A movie counts as *relevant* for a user
+if they rated it 4.0 or more in the held-out period. For each user we take the method's top K
+list (K = 5, 10, 20) and ask:
+- **Precision@K:** what share of the K movies shown were relevant?
+- **Recall@K:** what share of the user's relevant movies did the list catch?
+- **MAP@K and NDCG@K:** like precision and recall, but they reward putting relevant movies *near
+  the top*. NDCG is 1 for a perfect list and 0 for a list with no hits. **NDCG@10 is the headline
+  number** (my recommendation, fixed before the first real run; awaiting your confirmation).
+- **Coverage:** what share of the whole catalogue a method ever shows anyone. **Diversity:** how
+  different the movies inside one list are by genre. Neither says a list is *right*.
+- **RMSE and MAE:** how far a predicted rating is from the real one. A different question from
+  ranking, so it is secondary.
+- **Bootstrap interval:** we redraw the evaluated users with replacement 2,000 times and see how
+  much the average moves. The middle 95% is the interval. It captures *which users happened to be
+  in the sample*, nothing else. Comparing two methods on the *same* users (a paired difference)
+  is much tighter than comparing two separate intervals.
+Edge cases were decided once and tested against hand-worked numbers: with no relevant movie the
+score is undefined (NaN), not a fake 0; a list shorter than K is not rewarded; a repeated movie is
+an error.
+
+**Step 14, the harness (`pmrs.evaluation`).** For each evaluated user it builds a top-20 list for
+every method (random, popularity, Bayesian average, content with and without tags, item-kNN, SVD,
+hybrid) and scores it. Warm users and the four cold-start simulation sizes (0, 3, 5, 10 revealed
+ratings) are reported **separately**, and the cold-start rows are labelled as a *simulation*.
+Per-user results are kept, so intervals can be computed. The rules it enforces:
+- *Candidates:* the whole catalogue minus what the user is known to have rated (a cold-start
+  simulation user: minus only the revealed ratings). The held-out movies stay eligible, so a
+  relevant movie has to beat every other unknown movie. Every list is checked against this rule as
+  it is built.
+- *No peeking:* a separate check confirms every rating and tag handed to the models is strictly
+  earlier than its own user's or author's cutoff, and that no cold-start user is in the fit.
+- *Test period locked:* asking for `test` raises an error unless a flag only the final
+  evaluation uses is set; the command line only accepts `validation`. A test also rewrites all
+  test-period rating values and shows the validation numbers do not move by a digit. (Only the
+  *number* of a user's test ratings matters, through the Step 5 rule that excludes users whose
+  held-out share is too big.)
+- *Reproducible:* I ran the command twice; all six output files were byte-for-byte identical.
+
+**First real validation results (untuned defaults; validation period only; NOT the test).**
+Evaluated: 450 warm users and 119 cold-start simulation users.
+Warm users, NDCG@10 with 95% interval:
+| method | NDCG@10 |
+|---|---|
+| random | 0.001 [0.000, 0.002] |
+| popularity | 0.065 [0.052, 0.077] |
+| Bayesian average | 0.038 [0.029, 0.047] |
+| content (with / without tags) | 0.010 [0.005, 0.017] / 0.010 [0.005, 0.016] |
+| item-kNN | 0.002 [0.000, 0.006] |
+| SVD | 0.070 [0.056, 0.084] |
+| hybrid | 0.076 [0.063, 0.089] |
+
+What this means for the project, in ordinary words:
+- Every personalised method here is at best **a little better than just recommending what is
+  popular**. On the same users, hybrid minus popularity is +0.011 with an interval of [-0.002,
+  +0.024], and hybrid minus SVD is +0.006 [-0.005, +0.017]: both could be zero. So the data do not
+  yet show that the hybrid beats the best simple baseline or its best single part. Random is near
+  zero, as it should be, which shows the harness is not handing out free points.
+- The hybrid does clearly beat content and item-kNN (differences about +0.07, intervals far from 0).
+- **Cold-start simulation:** popularity is the strongest or tied for the strongest at every size.
+  At 0 revealed ratings the hybrid *is* popularity (as designed). At 3 and 5 revealed it is clearly
+  *worse* than popularity (about -0.04); at 10 it is slightly worse (-0.020 [-0.045, -0.000]).
+  The few-ratings blend leans 60% on the content model, which is the weakest part here. That is
+  a finding to report, not something to hide.
+- With 0 revealed ratings content, kNN and SVD have nothing to go on and return the same
+  tie-break order, so their identical numbers are not a method result.
+- **Rating error (secondary):** SVD RMSE 0.950 [0.909, 0.991] against 0.957 for just using each
+  user's own average rating, and 1.044 for the global average. SVD barely improves on "the user's
+  own mean".
+- **Item-kNN looks broken-ish, not just weak:** NDCG 0.002 and it recommends rare movies (coverage
+  0.23). Its score is a weighted average with no minimum number of supporting neighbours, so a movie
+  with a single neighbour can score extremely high. Tuning neighbours and shrinkage may help, but
+  the real fix would change how the model scores, which I have not touched. That needs your call.
+
+**What these numbers can and cannot tell you.** They are offline comparisons under one protocol:
+the models are fitted once and still see other users' ratings from after a scored user's own
+cutoff (about half of other users' ratings on average, measured in Step 5), so this is not a
+prediction of how future users would behave. The intervals cover only sampling noise between users;
+they do not cover the leakage, the choice of metric, or one fit's luck. With this many comparisons
+a few intervals will look decisive by chance, which is why the headline metric was fixed first. The
+dataset is small (450 users), movie ratings are not clicks, and the validation numbers will be
+optimistic once we tune on them.
+
+**Files changed:** new `src/pmrs/metrics/` (4 modules), `src/pmrs/evaluation/` (harness, report,
+command), `tests/test_metrics.py` (21), `tests/test_evaluation.py` (18); `CLAUDE.md`,
+`BUILD_PLAN.md`, `DECISIONS.md` (D-028). Outputs in `data/processed/evaluation/validation/`
+(git-ignored).
+
+**Verification (2026-11-12):**
+- `uv run pytest`: **PASS**, 199 tests. The 21 metric tests compare against hand-worked values,
+  including no relevant items and K larger than the list. The harness tests prove the mechanics
+  (candidate rule, cutoff check catching a late rating / late tag / cold user, test locked,
+  validation unaffected by test-period values, reproducible run, popularity beats random on a
+  dataset built so that is the right answer).
+- `uv run ruff check` **PASS**; `ruff format --check` **PASS**; `uv run mypy` (strict, 31 files)
+  **PASS**, 0 `type: ignore`.
+- `uv run python -m pmrs.split`: **PASS**. First validation run (about 16 s): **PASS**. Rerun
+  identical: **PASS**.
+- `uv sync`: **NOT RUN**. Test-period evaluation: **NOT RUN** (by design).
+- These are *mechanics* checks. The validation table above is a measured result, but it is for
+  untuned settings and is not evidence of how a final system performs.
+
+**Not verified / incomplete:** any tuned result; any test result; the hybrid-beats-best-single
+question (undecided on validation); item-kNN's weakness cause (hypothesis, not yet isolated);
+behaviour on different data.
+
+**Where I need you before Step 15 (tuning with tracking):**
+1. *MLflow.* The plan calls for it; it is a new dependency whose size on this nearly full disk is
+   unknown (18 GiB free). The plan says it is your decision if it is over 1 GB; the fallback is
+   `mlflow-skinny`. I recommend checking the size first (this contacts the package index with only
+   the package names) and starting with `mlflow-skinny`. Do you approve that lookup, and the
+   install if it is small?
+2. *Tuning grid.* My proposal: item-kNN neighbours {20, 50, 100} and shrinkage {5, 10, 25}; SVD
+   factors {20, 50, 100}; content feature-group weights {0.5, 1, 2} per group; hybrid weights for
+   the few-ratings and many-ratings rungs from a short list. Objective: validation NDCG@10 (warm
+   for the many-ratings rung and the single methods; cold-start 3 and 5 revealed for the
+   few-ratings rung). About 100 runs, each seconds. I would pick by point estimate and prefer the
+   simpler setting when intervals overlap.
+3. *Item-kNN.* May I add a minimum-support rule (ignore movies with too few supporting
+   neighbours), or should I only tune its existing parameters and report it as weak?
+4. *Headline metric.* Confirm NDCG@10.

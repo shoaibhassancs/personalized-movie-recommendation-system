@@ -1,7 +1,8 @@
 """Shared pieces for every recommender: fit data, history, ranking and the interface.
 
-This is a provisional scoring interface for Steps 6-9. Step 12 replaces it with the
-final ``Recommender`` class. Nothing here depends on the web.
+These are the building blocks every model shares (Steps 6-9). The single public entry
+point is the ``Recommender`` class (Step 12), which wraps these models. Nothing here
+depends on the web.
 
 Leakage note (kept visible): ``fit_data`` only hands a model what the Step 5 protocol
 allows for the chosen target. That removes a scored user's own held-out ratings and
@@ -19,6 +20,7 @@ import numpy.typing as npt
 import pandas as pd
 from scipy import sparse
 
+from pmrs.recommender.explain import Evidence
 from pmrs.split import (
     IdMap,
     Split,
@@ -157,6 +159,10 @@ class Scorer(ABC):
     @abstractmethod
     def score(self, history: History) -> FloatArray:
         """One score per catalogue item (higher is better); -inf means no evidence."""
+
+    def evidence(self, history: History, item: int) -> Evidence:
+        """Facts behind recommending item position ``item`` to this history."""
+        return Evidence("no_evidence")
 
     def recommend(self, history: History, k: int = 10) -> npt.NDArray[np.int64]:
         """Top-``k`` raw movie IDs, excluding the history items."""

@@ -22,6 +22,7 @@ import numpy as np
 from scipy import sparse
 
 from pmrs.recommender.base import FitData, FloatArray, History, Scorer, center_by_user
+from pmrs.recommender.explain import Evidence
 
 DEFAULT_NEIGHBOURS = 50  # provisional; tuned on validation only (Step 15)
 DEFAULT_SHRINKAGE = 10.0  # provisional
@@ -94,3 +95,34 @@ class ItemKNNScorer(Scorer):
         has_evidence = denominator > 0
         scores[has_evidence] = numerator[has_evidence] / denominator[has_evidence]
         return scores
+
+    def evidence(self, history: History, item: int) -> Evidence:
+        """The user's rated movies that are neighbours of ``item``, strongest first."""
+        start, stop = self.similarity.indptr[item], self.similarity.indptr[item + 1]
+        neighbours = self.similarity.indices[start:stop]
+        sims = self.similarity.data[start:stop]
+        position = {int(i): n for n, i in enumerate(history.items.tolist())}
+        rows = [
+            (n, float(s))
+            for j, s in zip(neighbours.tolist(), sims, strict=True)
+            if (n := position.get(j)) is not None
+        ]
+        if not rows:
+            return Evidence("no_evidence")
+        mean = float(history.ratings.mean())
+        support = [(n, s) for n, s in rows if history.ratings[n] > mean]
+        pool = support or rows  # prefer movies the user rated above their own average
+        pool.sort(
+            key=lambda r: (
+                -r[1] * abs(history.ratings[r[0]] - mean),
+                int(history.items[r[0]]),
+            )
+        )
+        top = pool[:3]
+        return Evidence(
+            "neighbours",
+            movies=tuple(int(self.item_map.ids[history.items[n]]) for n, _ in top),
+            ratings=tuple(float(history.ratings[n]) for n, _ in top),
+            value=float(sum(s for _, s in top)),
+            count=len(rows),
+        )

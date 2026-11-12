@@ -389,3 +389,144 @@ exists). Step 1 still has to finish its other work, so it is **not** marked done
   not by the type checker.
 - **Unchanged:** split protocol, model behaviour, scope. Chunk B not started. This supersedes the
   "strict mypy FAIL" status in D-024.
+
+## D-026 · 2026-11-12 · Owner decision and record · Phase 2 Chunk B (Steps 10-12) approved, repaired and finished
+- **Owner decisions (approvals recorded, not recommendations):** (a) Chunk B approved with the
+  `joblib` dependency declared (`joblib>=1.6.0`); (b) artifacts go in the git-ignored
+  `data/processed/artifacts/`; (c) ladder settings: 0 ratings = popularity (with favourite genres,
+  a genre-and-popularity mix; no genres, pure popularity), 1-9 = content-heavy blend, 10+ =
+  balanced blend, each method min-max scaled per user over that user's candidate movies; genre
+  names are plain names. (d) After a first attempt left the code in an inconsistent state, the
+  owner asked this session to take over Chunk B, repair the existing code into one design and
+  finish. No other scope, dependency or protocol change was made.
+- **What went wrong (plain account):** the first attempt left `recommender.py` written against one
+  explanation interface (`Catalog`, `content_evidence(...)` helper functions, `Evidence.sentence`,
+  kind `"none"`) while `explain.py` and the five models used another (`scorer.evidence(history,
+  item)` plus `render(...)`, kind `"no_evidence"`). `explain.py` had been overwritten without
+  being read first, and the original is not recoverable by this session. Result: 15 mypy errors
+  and 12 Ruff findings. Nothing was wrong with the Step 5 split, the Chunk A models or their
+  scoring.
+- **Design chosen (one interface):** `scorer.evidence(history, item)` returns an immutable
+  `Evidence`; `explain.render(evidence, title_of)` is the only place sentences are written;
+  `explain.Catalog` holds titles and display genres; `Recommender` calls both and keeps the
+  evidence beside the sentence. Rejected: keeping the helper-function interface, which would have
+  moved evidence logic away from the model that produced the score and needed isinstance checks.
+- **A real bug found and fixed by the new tests:** `ContentScorer.evidence` treated a sparse
+  matrix product as an array and crashed at run time (never executed before). Fixed by making the
+  product dense first. Chunk A scoring was not affected.
+- **Files:** `explain.py` (Catalog, MAX_TAGS_SHOWN = 5), `hybrid.py`, `recommender.py`,
+  `artifact.py`, `cli.py` (new: `build` and `recommend`), evidence methods in the models,
+  `smoke.py` (adds the hybrid and artifact round trip), `tests/test_hybrid_recommender.py` (49
+  tests). `pyproject.toml` and `uv.lock` carry `joblib`.
+- **Provisional, untuned settings (changeable only in `HybridConfig`, tuned on validation only in
+  Step 15):** few-ratings rung 1-9; few weights content 0.60, item-kNN 0.15, SVD 0.15, popularity
+  0.10; many weights 0.35 / 0.25 / 0.25 / 0.15; no-ratings-with-genres mix 0.6 genre match + 0.4
+  popularity; at most 5 shared tags named in a sentence.
+- **Candidate rule (unchanged, D-023):** a returned list never contains a movie in the user's
+  profile and excludes nothing else. For a warm user the profile is the pre-cutoff history; for a
+  cold-start simulation user it is only the revealed ratings (none for 0 revealed). Held-out items
+  stay eligible. A test checks every strategy against several profile sizes.
+- **Artifacts and security:** an artifact is `recommender.joblib` plus `metadata.json` (schema
+  version, creation time, split target, seed, data hash, counts, library versions, settings,
+  model size and SHA-256). Saving never overwrites. Loading checks size, SHA-256, schema and that
+  the metadata matches the model, and warns if library versions differ. **A joblib file is a
+  pickle: loading can run any code in it. Load only artifacts this project built. The SHA-256
+  check catches accidents, not tampering**, because whoever can replace the model file can also
+  replace its metadata. The warning is stored in the metadata and printed by the CLI every time.
+- **Checks (2026-11-12):** pytest PASS (154: 105 earlier + 49 new); ruff check PASS; ruff format
+  --check PASS; strict mypy PASS (22 files); full real-data smoke run PASS (all models and the
+  hybrid, round trip identical); CLI build and recommend on real data PASS; a second CLI build
+  correctly refused to overwrite. `uv sync` NOT RE-RUN this chunk beyond the earlier `uv add`.
+- **What the tests do and do not show:** they prove mechanics (ladder rungs and boundaries,
+  scaling and blending arithmetic, sentences built only from evidence, no rated movie ever
+  returned, save/load identical, damage detected). They are **not** evidence that any method
+  recommends well; no metric was computed (Phase 3).
+- **Not verified / still open:** recommendation quality of every method and of the blend; the
+  `test` target artifact (not built; the test split must stay unread until the final refit);
+  behaviour across different library versions (only a warning); explanation truthfulness beyond
+  "the sentence only uses its evidence" (a sentence describes what the mechanism did, not why the
+  user would like the movie); the CLI was exercised on the validation artifact only.
+- **Records updated:** `CLAUDE.md`, `BUILD_PLAN.md` (Steps 10-12), `BUILD_LOG.md`. Gate 2 awaits
+  the owner's review.
+
+## D-027 · 2026-11-12 · Owner decision and record · Gate 2 follow-up: content-explanation wording and fuller smoke samples
+- **Owner decision:** approved a focused follow-up within Chunk B: make content explanations say
+  when a cited movie was used because it beat the user's own average (showing rating and average),
+  use neutral wording when the model falls back to a movie that was not above average, and extend
+  the smoke output (all seven strategies for one warm user; hybrid at 0, 3, 5 and 10 revealed
+  ratings for one cold-start user; sentences and the user's average everywhere). No change to
+  scoring, weights, split rules, candidate rules or scope; no quality metrics; Phase 3 not started.
+- **Why:** the content model treats a rating as positive only relative to the user's own mean
+  (user 307: mean 2.4968, so a 2.5 counts). The old sentence ("Because you rated X (2.5)") hid this
+  and read as if the user liked X. The wording, not the scoring, was the defect.
+- **Change:** `Evidence` gained `average` and `above_average`; `ContentScorer.evidence` fills them
+  (same selection as before); `render` states the comparison, or uses neutral fallback wording.
+  The printed average gets extra digits when two places would round it up to the cited rating
+  ("2.497", not "2.50"). kNN and SVD sentences are unchanged (they do not call movies liked).
+- **Checks (2026-11-12):** pytest PASS (160); ruff check PASS; ruff format --check PASS; strict
+  mypy PASS; full smoke run PASS with 14 of 14 artifact round trips identical. Quality metrics NOT
+  RUN. The neutral fallback wording is covered by tests only, not by a real-data sample.
+- **Records updated:** `BUILD_LOG.md`. `CLAUDE.md` and `BUILD_PLAN.md` needed no change.
+
+## D-028 · 2026-11-12 · Owner decision and record · Gate 2 approved; Phase 3 started; Steps 13-14 built
+- **Owner decisions:** Gate 2 approved. Phase 3 (Steps 13-17) to begin per `BUILD_PLAN.md`:
+  preserve the per-user holdout protocol and its limitation; tune on validation only; freeze the
+  chosen settings before the final test evaluation; read the test period once; no change to the
+  split or candidate rules without asking; non-commercial; no unrelated scope; report what the
+  metrics mean, comparisons against baselines, uncertainty, and keep validation results distinct
+  from the final test result; no Git; stop at the next approval gate.
+- **Built (no new dependency, no open decision needed):** Step 13 `pmrs.metrics` (Precision,
+  Recall, MAP, NDCG @K with binary relevance at rating >= 4.0; RMSE; MAE; catalogue coverage;
+  intra-list genre diversity; percentile bootstrap intervals over users, paired differences and a
+  pooled-ratio bootstrap). Step 14 `pmrs.evaluation` (harness, report, `python -m
+  pmrs.evaluation`): every method, K = 5, 10, 20, per-user rows kept, warm users and the four
+  cold-start simulation sizes (0, 3, 5, 10) reported separately.
+- **Edge-case rules (decided once, in code and tests):** no relevant item gives NaN for recall,
+  MAP and NDCG (precision 0) and the harness refuses NaN, because the protocol never scores a user
+  with no relevant held-out movie; precision always divides by K (short lists are not rewarded);
+  a repeated movie in a list is an error; two movies both with no listed genres have genre
+  distance 0.
+- **Recommended by the assistant, not yet owner-confirmed (confirm at the Step 15 approval):**
+  headline metric NDCG@10, fixed before the first real run; the other metrics are supporting
+  detail. Intervals: 2,000 user-resamples, seed 42, 95% percentile; the same resampled users are
+  used for every method, so paired differences are exact. Rating error (RMSE/MAE) is reported as
+  secondary on warm users only, beside two reference predictors (`global_mean`, `user_mean`) that
+  are not models, so any SVD gain is visible.
+- **Test-period protection (so far):** `evaluate(..., "test")` raises `ProtectedTargetError`
+  unless `allow_test=True`; the command line offers `validation` only. A test rewrites every
+  test-period rating value and shows validation results do not change (only the *count* of a
+  user's test ratings matters, through the Step 5 eligibility rule fixed in D-021). A one-time
+  read guard and the frozen-configuration hash are Step 16 work.
+- **Protocol checks in code:** every list is checked against the candidate rule as it is built
+  (no known movie, 20 unique movies); `verify_fit_respects_cutoffs` checks that every fitted
+  rating and tag is strictly earlier than its own user's/author's cutoff in force and that no
+  cold-start user is in the fit (tests prove it catches a late rating, a late tag and a cold user).
+  The Step 5 candidate and cold-start rules were not changed.
+- **First real validation run (2026-11-12, untuned defaults, validation period only; NOT a test
+  result and NOT tuned).** Evaluated users: 450 warm; 119 cold-start simulation. Warm NDCG@10
+  [95% CI]: random 0.001 [0.000, 0.002]; popularity 0.065 [0.052, 0.077]; Bayesian average 0.038
+  [0.029, 0.047]; content 0.010 [0.005, 0.017]; item-kNN 0.002 [0.000, 0.006]; SVD 0.070 [0.056,
+  0.084]; hybrid 0.076 [0.063, 0.089]. Paired: hybrid minus popularity +0.011 [-0.002, +0.024]
+  (spans 0); hybrid minus SVD +0.006 [-0.005, +0.017] (spans 0); hybrid minus content +0.066 and
+  minus item-kNN +0.073 (both exclude 0). Cold-start simulation: popularity is the strongest or
+  tied for the strongest at every size; the hybrid equals popularity at 0 revealed by design and
+  is *worse* than popularity at 3 and 5 revealed (-0.039 and -0.037, intervals exclude 0) and at 10
+  (-0.020, [-0.045, -0.000]). Full tables: `data/processed/evaluation/validation/report.txt`.
+- **Findings that bear on Step 15 (stated, not acted on):** (1) item-kNN is near random on warm
+  users and recommends rare movies (coverage 0.23): its score is a weighted average with no
+  minimum support, so a movie with one neighbour can score extremely high. Tuning `neighbours`
+  and `shrinkage` may help, but fixing the cause would change the model's scoring (a minimum
+  support rule), which is beyond "provisional parameters" and needs the owner's decision.
+  (2) The content model ranks well below popularity: it has no popularity signal. (3) The
+  few-ratings rung of the hybrid is content-heavy (0.60), and content is the weakest component
+  here, which explains the hybrid trailing popularity at 3 and 5 revealed. (4) With 0 revealed
+  ratings content, kNN and SVD all have no information and return the same tie-break order
+  (lowest movie id first); their identical numbers at 0 revealed are not a method result.
+- **Checks (2026-11-12):** pytest PASS (199: 160 earlier + 21 metrics + 18 evaluation); ruff
+  check PASS; ruff format --check PASS; strict mypy PASS (31 files, 0 `type: ignore`);
+  `python -m pmrs.split` PASS; first validation run PASS; **rerun byte-identical** on all six
+  output files (reproducible); `uv sync` NOT RUN.
+- **Not done / waiting for owner:** Step 15 needs MLflow (a new dependency set; size to be
+  checked, owner decision if over 1 GB, per the plan) and decisions on the tuning grid and the
+  item-kNN question above. Steps 15-17 not started. No test-period number exists.
+- **Records updated:** `CLAUDE.md`, `BUILD_PLAN.md` (Steps 13-14), `BUILD_LOG.md`.

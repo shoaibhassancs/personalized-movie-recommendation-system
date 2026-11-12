@@ -1,10 +1,11 @@
-"""Real-data smoke run for Steps 6-9: fit time, scoring time, peak memory, sample lists.
+"""Real-data smoke run for Steps 6-12: fit time, scoring time, peak memory, samples.
 
 ``uv run python -m pmrs.recommender.smoke`` fits each model on the validation fit data
-(train ratings only) in its own subprocess, so peak memory is per model. It prints a few
-recommendation lists for a human spot check. It never reads or prints held-out items and
-computes no accuracy: metrics belong to Phase 3, and a glance at sample lists is not
-evidence of quality.
+(train ratings only) in its own subprocess, so peak memory is per model, then runs the
+hybrid ``Recommender`` the same way (with an artifact save/load round trip in a
+temporary folder). It prints a few recommendation lists for a human spot check. It
+never reads or prints held-out items and computes no accuracy: metrics belong to
+Phase 3, and a glance at sample lists is not evidence of quality.
 
 Reminder of the claim limit: the fit still contains other users' ratings dated after a
 scored user's own cutoff, so anything later measured on this protocol supports only
@@ -14,6 +15,7 @@ scored user's own cutoff, so anything later measured on this protocol supports o
 import resource
 import subprocess
 import sys
+import tempfile
 import time
 from collections import Counter
 from collections.abc import Callable
@@ -23,6 +25,11 @@ import numpy as np
 import pandas as pd
 
 from pmrs.data import load_movielens
+from pmrs.recommender.artifact import (
+    data_fingerprint,
+    load_recommender,
+    save_recommender,
+)
 from pmrs.recommender.base import FitData, History, Scorer, fit_data, user_history
 from pmrs.recommender.baselines import (
     BayesianAverageScorer,
@@ -31,6 +38,11 @@ from pmrs.recommender.baselines import (
 )
 from pmrs.recommender.content import ContentScorer, genre_names
 from pmrs.recommender.knn import ItemKNNScorer
+from pmrs.recommender.recommender import (
+    Recommender,
+    UserProfile,
+    profile_from_history,
+)
 from pmrs.recommender.svd import SVDScorer
 from pmrs.split import Split, build_split, evaluation_users
 
@@ -115,6 +127,9 @@ def run_one(name: str) -> None:
     if name == "none":
         print(f"[none] load + split + fit data only: peak memory {baseline:.0f} MB")
         return
+    if name == "hybrid":
+        run_hybrid(split, fit, users, baseline)
+        return
     model = make_model(name)
     start = time.perf_counter()
     model.fit(fit)
@@ -140,11 +155,118 @@ def run_one(name: str) -> None:
             print(f"      {row['title']}  [{'|'.join(row['genres'])}]")
 
 
+COLD_SIZES = (0, 3, 5, 10)  # revealed-rating counts in the cold-start simulation
+STRATEGY_ORDER = (
+    "random",
+    "popularity",
+    "bayesian_average",
+    "content",
+    "item_knn",
+    "svd",
+    "hybrid",
+)
+
+
+def show(
+    label: str,
+    profile: UserProfile,
+    strategy: str,
+    rec: Recommender,
+    loaded: Recommender,
+) -> None:
+    """Print one top-``TOP`` list with its sentences and the user's average rating.
+
+    Also checks that the model loaded back from the artifact gives the same list and
+    the same sentences.
+    """
+    before = rec.recommend(profile, strategy, k=TOP)
+    after = loaded.recommend(profile, strategy, k=TOP)
+    same = before.movie_ids == after.movie_ids and [
+        i.explanation for i in before.items
+    ] == [i.explanation for i in after.items]
+    count = len(profile.ratings)
+    average = (
+        f"; average rating {sum(profile.ratings.values()) / count:.4f}" if count else ""
+    )
+    rung = f"; rung {before.branch}" if before.branch else ""
+    print(
+        f"  {label} [{strategy}]: {count} ratings{average}{rung}; "
+        f"round trip identical: {same}"
+    )
+    for note in before.notes:
+        print(f"      note: {note}")
+    for item in before.items:
+        print(f"      {item.title}  [{'|'.join(item.genres)}]")
+        print(f"          {item.explanation}")
+
+
+def run_hybrid(
+    split: Split,
+    fit: FitData,
+    users: list[tuple[str, int, int | None]],
+    baseline: float,
+) -> None:
+    """Fit the whole ``Recommender``, round-trip it through an artifact, print lists.
+
+    Shown: every strategy for one warm user; the hybrid for two more warm users; the
+    hybrid for one cold-start simulation user at 0, 3, 5 and 10 revealed ratings; and
+    the no-ratings-with-favourite-genre case. Only pre-cutoff or revealed ratings are
+    used, so no held-out item is read.
+    """
+    start = time.perf_counter()
+    rec = Recommender.fit(fit, target="validation", data_hash=data_fingerprint(RAW_DIR))
+    fit_seconds = time.perf_counter() - start
+
+    def profile_of(user: int, size: int | None) -> UserProfile:
+        history = user_history(split, user, "validation", size)
+        return profile_from_history(history, split.item_map)
+
+    warm_label, warm_user, _ = users[0]
+    cold_user = users[3][1]
+    shown: list[tuple[str, UserProfile, str]] = [
+        (f"{warm_label}, user {warm_user}", profile_of(warm_user, None), strategy)
+        for strategy in STRATEGY_ORDER
+    ]
+    for label, user, _ in users[1:3]:
+        shown.append((f"{label}, user {user}", profile_of(user, None), "hybrid"))
+    for size in COLD_SIZES:
+        label = f"cold-start simulation, {size} revealed, user {cold_user}"
+        shown.append((label, profile_of(cold_user, size), "hybrid"))
+    shown.append(
+        (
+            "cold-start, 0 ratings, favourite genre Sci-Fi",
+            UserProfile(genres=("sci-fi",)),
+            "hybrid",
+        )
+    )
+    with tempfile.TemporaryDirectory() as scratch:
+        start = time.perf_counter()
+        folder = save_recommender(rec, Path(scratch) / "artifact")
+        save_seconds = time.perf_counter() - start
+        size_mb = sum(p.stat().st_size for p in folder.iterdir()) / (1024 * 1024)
+        start = time.perf_counter()
+        loaded = load_recommender(folder)
+        load_seconds = time.perf_counter() - start
+        start = time.perf_counter()
+        for _, profile, strategy in shown:
+            rec.recommend(profile, strategy, k=TOP)
+        recommend_ms = 1000 * (time.perf_counter() - start) / len(shown)
+        print(
+            f"[hybrid] fit all models {fit_seconds:.2f} s; recommend one list "
+            f"{recommend_ms:.0f} ms; artifact {size_mb:.1f} MB "
+            f"(save {save_seconds:.2f} s, load {load_seconds:.2f} s); "
+            f"peak memory {peak_mb():.0f} MB "
+            f"(data loading alone: {baseline:.0f} MB)"
+        )
+        for label, profile, strategy in shown:
+            show(label, profile, strategy, rec, loaded)
+
+
 def main() -> None:
     if len(sys.argv) == 3 and sys.argv[1] == "--model":
         run_one(sys.argv[2])
         return
-    for name in ("none", *MODELS):
+    for name in ("none", *MODELS, "hybrid"):
         subprocess.run(
             [sys.executable, "-m", "pmrs.recommender.smoke", "--model", name],
             check=True,

@@ -21,12 +21,14 @@ from collections.abc import Iterable
 from typing import Self
 
 import numpy as np
+import numpy.typing as npt
 import pandas as pd
 from scipy import sparse
 from sklearn.feature_extraction.text import TfidfVectorizer
 from sklearn.preprocessing import normalize
 
 from pmrs.recommender.base import FitData, FloatArray, History, Scorer
+from pmrs.recommender.explain import Evidence
 
 DEFAULT_WEIGHTS = {"genres": 1.0, "tags": 1.0, "title": 1.0, "decade": 1.0}
 _WORD = r"(?u)\b[a-z][a-z]+\b"
@@ -73,6 +75,17 @@ def _tag_docs(data: FitData) -> list[str]:
     return docs
 
 
+def _tag_sets(data: FitData) -> list[frozenset[str]]:
+    sets: list[set[str]] = [set() for _ in range(len(data.item_map))]
+    if not data.tags.empty:
+        clean = data.tags["tag"].astype(str).map(normalise_tag)
+        positions = data.item_map.to_index(data.tags["movie_id"])
+        for position, tag in zip(positions.tolist(), clean.tolist(), strict=True):
+            if tag:
+                sets[position].add(tag)
+    return [frozenset(s) for s in sets]
+
+
 def _block(
     docs: list[str], vectorizer: TfidfVectorizer, weight: float
 ) -> "sparse.csr_matrix":
@@ -105,6 +118,10 @@ class ContentScorer(Scorer):
     def fit(self, data: FitData) -> Self:
         self.item_map = data.item_map
         movies = data.movies
+        self.movie_genres = [frozenset(genre_names(g)) for g in movies["genres"]]
+        self.movie_tags = (
+            _tag_sets(data) if self.use_tags else [frozenset()] * len(data.item_map)
+        )
         w = self.weights
         blocks = [
             _block(
@@ -138,15 +155,21 @@ class ContentScorer(Scorer):
             self.item_vectors = sparse.csr_matrix(normalize(stacked))
         return self
 
+    @staticmethod
+    def _profile_items(history: History) -> tuple[npt.NDArray[np.bool_], FloatArray]:
+        """Which history items build the profile, and their weights."""
+        weights = history.ratings - history.ratings.mean()
+        chosen = weights > 0
+        if not chosen.any():
+            weights, chosen = history.ratings, np.ones(len(history), dtype=bool)
+        return chosen, weights
+
     def profile(self, history: History) -> FloatArray:
         """The user's taste vector (unit length), or zeros if nothing can be built."""
         width = self.item_vectors.shape[1]
         if len(history) == 0:
             return np.zeros(width)
-        weights = history.ratings - history.ratings.mean()
-        chosen = weights > 0
-        if not chosen.any():
-            weights, chosen = history.ratings, np.ones(len(history), dtype=bool)
+        chosen, weights = self._profile_items(history)
         vectors = self.item_vectors[history.items[chosen]]
         mixed = np.asarray(vectors.T @ weights[chosen], dtype=np.float64).ravel()
         length = float(np.linalg.norm(mixed))
@@ -156,3 +179,28 @@ class ContentScorer(Scorer):
         return np.asarray(
             self.item_vectors @ self.profile(history), dtype=np.float64
         ).ravel()
+
+    def evidence(self, history: History, item: int) -> Evidence:
+        """The liked history movie most similar to ``item``, and what they share."""
+        if len(history) == 0 or self.item_vectors.shape[1] == 0:
+            return Evidence("no_evidence")
+        chosen, _ = self._profile_items(history)
+        liked = history.items[chosen]
+        ratings = history.ratings[chosen]
+        # sparse @ sparse is sparse: make it dense before treating it as an array
+        sims = (self.item_vectors[liked] @ self.item_vectors[item].T).toarray().ravel()
+        if sims.max() <= 0:
+            return Evidence("no_evidence")
+        best = int(np.lexsort((liked, -ratings, -sims))[0])
+        other = int(liked[best])
+        return Evidence(
+            "content",
+            movies=(int(self.item_map.ids[other]),),
+            ratings=(float(ratings[best]),),
+            genres=tuple(sorted(self.movie_genres[item] & self.movie_genres[other])),
+            tags=tuple(sorted(self.movie_tags[item] & self.movie_tags[other])),
+            value=float(sims[best]),
+            average=float(history.ratings.mean()),
+            # False only in the fallback where no rating beat the user's own mean
+            above_average=bool((history.ratings > history.ratings.mean()).any()),
+        )

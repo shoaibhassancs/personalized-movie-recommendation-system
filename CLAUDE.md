@@ -17,12 +17,17 @@ defaults** until the step or gate that decides them. Do not copy them into this 
 ## Current state
 Python 3.12 uv project: `pmrs.data` (download, loaders, validation), `pmrs.split` (per-user
 holdout, ID maps, sparse matrix, evaluation groups, feasibility tables), `pmrs.recommender`
-(baselines, content-based, item-kNN, SVD behind a provisional scoring interface; Phase 2 Chunk A,
-Steps 6-9), tests, and an EDA notebook; MovieLens data in `data/raw/` (git-ignored). Gate 1 is
-approved. No hybrid, explanations, `Recommender` class, metrics, API or UI yet. Strict mypy passes; scikit-learn is
-untyped, so its values are `Any` via one approved override (D-025). Check
-`project-notes/BUILD_LOG.md` for what is actually built; never assume a step is done unless the
-log says it was run and verified.
+(baselines, content-based, item-kNN, SVD; the hybrid cold-start ladder; fixed-sentence
+explanations; one `Recommender` class; joblib artifacts with metadata; a small CLI; Phase 2,
+Steps 6-12), `pmrs.metrics` and `pmrs.evaluation` (Phase 3 Steps 13-14: metrics, bootstrap
+intervals, and a harness that compares all methods on the validation period), tests, and an EDA
+notebook; MovieLens data in `data/raw/` (git-ignored). Gates 1 and 2 are approved. Phase 3 is in
+progress: Steps 15-17 (MLflow tuning, the single test read, final artifacts) have not started and
+no test-period number exists. No API or UI yet. Strict mypy passes; scikit-learn is untyped, so
+its values are `Any` via one approved override (D-025). All hybrid weights and cut-offs are
+provisional and untuned until Step 15 (D-026). A `.joblib` artifact is a pickle: load only
+artifacts this project built. Check `project-notes/BUILD_LOG.md` for what is actually built;
+never assume a step is done unless the log says it was run and verified.
 
 ## Working process
 - **Owner drives.** Work phase by phase, in practical chunks of related steps. Pause only for a
@@ -91,6 +96,10 @@ It is the owner's readable record of progress, written like the reference
   eligible. Cold-start simulation users: excludes **only the ratings actually revealed** for that
   history size (0, 3, 5, 10); hidden train, validation and test ratings never filter candidates
   (D-023).
+- The evaluation harness refuses `target="test"` unless `allow_test=True`, which only the final
+  evaluation (Step 16) may pass, once, after the configuration is frozen. Tuning code never passes
+  it. Report validation and test results separately, with intervals, and say that intervals
+  cover sampling noise between users only.
 - Fixed seeds wherever randomness affects results. Report uncertainty; claims stay proportionate
   to the evidence (offline, small dataset, development-grade data).
 
@@ -111,6 +120,9 @@ uv run mypy           # type-check src/
 uv run ruff format    # format code (add --check to only check)
 uv run python -m pmrs.data.download   # fetch MovieLens into data/raw/ (already done once)
 uv run python -m pmrs.split           # build the split, print and save feasibility tables (Step 5)
-uv run python -m pmrs.recommender.smoke   # fit each model on validation data: time, memory, sample lists (Steps 6-9)
+uv run python -m pmrs.recommender.smoke   # fit each model + the hybrid on validation data: time, memory, sample lists (Steps 6-12)
+uv run python -m pmrs.recommender.cli build --target validation   # save an artifact (never overwrites)
+uv run python -m pmrs.recommender.cli recommend --artifact data/processed/artifacts/validation --ratings 318:5,296:4.5 -k 10
+uv run python -m pmrs.evaluation   # compare all methods on the VALIDATION period; writes data/processed/evaluation/ (Step 14)
 ```
 Add new commands here only once they work.

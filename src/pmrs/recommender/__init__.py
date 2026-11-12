@@ -1,4 +1,6 @@
-"""Recommendation models (Steps 6-9): baselines, content-based, item-kNN and SVD.
+"""Recommendation models (Steps 6-12): baselines, content-based, item-kNN and SVD,
+plus the hybrid ladder, explanations and the ``Recommender`` class (see ``recommender``,
+``hybrid``, ``explain``, ``artifact`` and ``cli``).
 
 No web dependencies. Every model is fitted through ``fit_data``, which applies the
 Step 5 protocol; see ``base`` for the leakage note.

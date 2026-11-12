@@ -160,40 +160,49 @@ Step 12 first imports it).
   fold-in test passes.
 - Note: scikit-learn has no ALS/FunkSVD. This is a limitation to state, not hide.
 
-**Step 10. Hybrid and cold-start logic**
+**Step 10. Hybrid and cold-start logic** (built in Chunk B, 2026-11-12; D-026)
 - Goal: blended ranking and new-user handling. Needs: 6–9. Method: normalise scores per method;
   blend with a weight that depends on the user's rating count; branches: 0 ratings → favourite
   genres + weighted popularity; few ratings → content-heavy; many → balanced.
 - Output: hybrid recommender. Done when: tests cover each branch; weights tunable via a config
   but not tuned yet.
+- Built: ladder 0 / 1-9 / 10+ ratings in `hybrid.py` (`HybridConfig`); per-user min-max scaling
+  over candidates; all weights provisional and untuned.
 
-**Step 11. Explanations**
+**Step 11. Explanations** (built in Chunk B, 2026-11-12; D-026)
 - Goal: truthful reasons. Needs: 7–10. Method: each model returns evidence with its scores (top
   matching genre/tag; the user's highest-rated similar movie; neighbour support; popularity
   fallback), turned into fixed sentences.
+- Built: `Model.evidence(history, item)` returns `Evidence`; `explain.render` is the only place
+  sentences are written; `Recommender` keeps evidence and sentence together.
 - Output: explanation field in results. Done when: tests assert each explanation names a real
   movie/genre from the evidence, and the fallback says it is popularity-based.
 
-**Step 12. Single recommender interface and artifacts**
+**Step 12. Single recommender interface and artifacts** (built in Chunk B, 2026-11-12; D-026)
 - Goal: one implementation for notebooks, CLI, and the API. Needs: 6–11. Method: a `Recommender`
   class with `recommend(user_profile, strategy, k)`, artifact save/load (joblib), version
   metadata (data hash, date, seed).
 - Output: `pmrs.recommender` + small CLI. Done when: fit → save → load → identical results test.
+- Built: `Recommender`, `artifact.py` (joblib + `metadata.json` with SHA-256; never overwrites;
+  trusted-artifacts-only warning), `cli.py` (`build`, `recommend`); `joblib>=1.6.0` declared.
+  Tests: ladder, scaling, explanations, candidate rule, round trip, damage detection.
 
-**Gate 2:** all methods run offline, tests green, owner reviews sample outputs.
+**Gate 2:** all methods run offline, tests green, owner reviews sample outputs. *Status: Steps
+6-12 built and checked (154 tests, lint, strict mypy, real-data smoke run); awaiting owner review.*
 
 ## Phase 3: Evaluation and experiment tracking (Steps 13–17)
 
 Purpose: the credibility evidence.
 Packages: mlflow (size to be checked first; `mlflow-skinny` is the fallback), plotly.
 
-**Step 13. Metrics module**
+**Step 13. Metrics module** (built 2026-11-12; D-028)
 - Goal: correct metrics. Needs: 5. Method: Precision/Recall/NDCG/MAP@K, RMSE, MAE, coverage,
   intra-list genre diversity.
 - Output: `pmrs.metrics`. Done when: unit tests with hand-computed values (including edge cases:
   no relevant items, K larger than the list).
+- Built: ranking, rating, coverage, diversity and bootstrap functions; 21 hand-computed tests.
 
-**Step 14. Evaluation harness**
+**Step 14. Evaluation harness** (built 2026-11-12; D-028)
 - Goal: one command compares all methods. Needs: 12, 13. Method: two modes. **Validation
   mode:** every fitted component (popularity statistics, item similarities, SVD, TF-IDF, user
   profiles) uses only the Step 5 train data and tags usable for validation. **Test mode:** models
@@ -212,8 +221,12 @@ Packages: mlflow (size to be checked first; `mlflow-skinny` is the fallback), pl
   cold-start history item) is not, and (b)
   no rating or tag used in fitting is at or after its own user's or author's cutoff in force.
   The harness labels all outputs with the narrowed per-user-holdout claim.
+- Built: `pmrs.evaluation` (`uv run python -m pmrs.evaluation`), results in
+  `data/processed/evaluation/validation/` (git-ignored); rerun verified byte-identical; the test
+  period is protected (`allow_test`); first untuned validation results recorded in D-028.
 
-**Step 15. Tuning with tracking**
+**Step 15. Tuning with tracking** (NOT started: waiting for the MLflow dependency decision, the
+grid, and the item-kNN question in D-028)
 - Goal: choose settings without touching test. Needs: 14. Method: small grid evaluated in
   validation mode (models fitted on train data, scored on the validation period) for
   neighbours, SVD rank, feature-group weights, hybrid blend; each run logged to MLflow (local

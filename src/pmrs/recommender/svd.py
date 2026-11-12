@@ -29,6 +29,7 @@ from pmrs.recommender.base import (
     Scorer,
     center_by_user,
 )
+from pmrs.recommender.explain import Evidence
 
 DEFAULT_FACTORS = 50  # provisional; tuned on validation only (Step 15)
 DEFAULT_SEED = 42
@@ -72,3 +73,31 @@ class SVDScorer(Scorer):
         """Predicted rating per movie, clipped to the 0.5-5 scale."""
         base = history.ratings.mean() if len(history) else self.global_mean
         return np.clip(base + self._deviation(history), MIN_RATING, MAX_RATING)
+
+    def evidence(self, history: History, item: int) -> Evidence:
+        """A statistical match; names the closest movie rated above the user's mean."""
+        if len(history) == 0:
+            return Evidence("no_evidence")
+        liked = history.ratings > history.ratings.mean()
+        if not liked.any():
+            liked = np.ones(len(history), dtype=bool)
+        items, ratings = history.items[liked], history.ratings[liked]
+        vectors = self.item_factors[items]
+        norms = np.linalg.norm(vectors, axis=1) * np.linalg.norm(
+            self.item_factors[item]
+        )
+        sims = np.divide(
+            vectors @ self.item_factors[item],
+            norms,
+            out=np.zeros(len(items)),
+            where=norms > 0,
+        )
+        if sims.max() <= 0:
+            return Evidence("taste_pattern")
+        best = int(np.lexsort((items, -ratings, -sims))[0])
+        return Evidence(
+            "taste_pattern",
+            movies=(int(self.item_map.ids[items[best]]),),
+            ratings=(float(ratings[best]),),
+            value=float(sims[best]),
+        )
