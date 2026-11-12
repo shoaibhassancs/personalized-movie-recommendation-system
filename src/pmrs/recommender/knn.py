@@ -14,11 +14,17 @@ Scoring happens at request time from the user's own history, with no refit: for 
 ``i`` the score is ``sum(sim(i,j) * (r_j - mean_u)) / sum(sim(i,j))`` over the user's
 rated movies ``j`` that are among ``i``'s neighbours. A movie with no such neighbour has
 no evidence and scores ``-inf``.
+
+Minimum support (Step 15, D-029): with ``min_support = m`` a movie rated by fewer than
+``m`` fit users scores ``-inf`` too, so it is ranked below every movie that has enough
+raters. This changes scores only. It is not a candidate filter: such movies stay in the
+Step 5 candidate set and are simply listed last. ``m = 0`` is the original behaviour.
 """
 
 from typing import Self
 
 import numpy as np
+import numpy.typing as npt
 from scipy import sparse
 
 from pmrs.recommender.base import FitData, FloatArray, History, Scorer, center_by_user
@@ -26,6 +32,7 @@ from pmrs.recommender.explain import Evidence
 
 DEFAULT_NEIGHBOURS = 50  # provisional; tuned on validation only (Step 15)
 DEFAULT_SHRINKAGE = 10.0  # provisional
+DEFAULT_MIN_SUPPORT = 0  # 0: no minimum, the Step 8 behaviour
 BLOCK_ITEMS = 500
 
 
@@ -37,11 +44,15 @@ class ItemKNNScorer(Scorer):
         neighbours: int = DEFAULT_NEIGHBOURS,
         shrinkage: float = DEFAULT_SHRINKAGE,
         block_items: int = BLOCK_ITEMS,
+        min_support: int = DEFAULT_MIN_SUPPORT,
     ) -> None:
         if neighbours < 1 or block_items < 1 or shrinkage < 0:
             raise ValueError("neighbours and block_items must be >= 1, shrinkage >= 0")
+        if min_support < 0:
+            raise ValueError("min_support must be >= 0")
         self.neighbours = neighbours
         self.shrinkage = shrinkage
+        self.min_support = min_support
         self.block_items = block_items
 
     def fit(self, data: FitData) -> Self:
@@ -51,6 +62,9 @@ class ItemKNNScorer(Scorer):
         present = data.matrix.copy()
         present.data = np.ones_like(present.data)
         present_csc = present.tocsc()
+        self.support: npt.NDArray[np.int64] = np.diff(present_csc.indptr).astype(
+            np.int64
+        )  # fit users who rated each movie
         norms = np.sqrt(
             np.asarray(centred.multiply(centred).sum(axis=0), dtype=np.float64).ravel()
         )
@@ -94,6 +108,7 @@ class ItemKNNScorer(Scorer):
         denominator = np.asarray(self.similarity @ rated, dtype=np.float64).ravel()
         has_evidence = denominator > 0
         scores[has_evidence] = numerator[has_evidence] / denominator[has_evidence]
+        scores[self.support < self.min_support] = -np.inf  # too few raters to trust
         return scores
 
     def evidence(self, history: History, item: int) -> Evidence:

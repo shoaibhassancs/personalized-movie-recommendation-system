@@ -49,7 +49,9 @@ from pmrs.metrics.intervals import DEFAULT_BOOTSTRAPS
 from pmrs.recommender.base import FitData, Scorer, fit_data, user_history
 from pmrs.recommender.baselines import BayesianAverageScorer
 from pmrs.recommender.content import ContentScorer
+from pmrs.recommender.hybrid import HybridConfig
 from pmrs.recommender.recommender import Recommender, profile_from_history
+from pmrs.recommender.settings import ModelSettings
 from pmrs.recommender.svd import SVDScorer
 from pmrs.split import (
     HISTORY_SIZES,
@@ -186,6 +188,8 @@ def evaluate(
     seed: int = 42,
     data_hash: str = "",
     n_boot: int = DEFAULT_BOOTSTRAPS,
+    settings: ModelSettings | None = None,
+    config: HybridConfig | None = None,
 ) -> EvaluationResult:
     """Score every method for every evaluated user; see the module note."""
     if target == "test" and not allow_test:
@@ -198,9 +202,18 @@ def evaluate(
         raise ValueError(f"unknown methods {sorted(unknown)}")
     verify_fit_respects_cutoffs(split, target)
     fit = fit_data(split, movies, target)
-    rec = Recommender.fit(fit, target=target, seed=seed, data_hash=data_hash)
+    rec = Recommender.fit(
+        fit,
+        target=target,
+        seed=seed,
+        config=config,
+        settings=settings,
+        data_hash=data_hash,
+    )
     scorers = dict(rec.scorers)
-    scorers["content_no_tags"] = ContentScorer(use_tags=False).fit(fit)
+    scorers["content_no_tags"] = ContentScorer(
+        use_tags=False, weights=(settings or ModelSettings()).content_weights
+    ).fit(fit)
     genre_sets = [rec.catalog.genre_set(i) for i in range(len(fit.item_map))]
 
     rows: list[dict[str, Any]] = []

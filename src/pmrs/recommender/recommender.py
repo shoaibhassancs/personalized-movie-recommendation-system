@@ -58,6 +58,7 @@ from pmrs.recommender.hybrid import (
     min_max_scale,
 )
 from pmrs.recommender.knn import ItemKNNScorer
+from pmrs.recommender.settings import ModelSettings
 from pmrs.recommender.svd import SVDScorer
 from pmrs.split import IdMap
 
@@ -194,6 +195,7 @@ class Recommender:
         target: str,
         seed: int = 42,
         config: HybridConfig | None = None,
+        settings: ModelSettings | None = None,
         data_hash: str = "",
     ) -> "Recommender":
         """Fit every model on ``data`` (which the split protocol has already limited).
@@ -202,13 +204,18 @@ class Recommender:
         information; they do not change the fit.
         """
         config = config or HybridConfig()
+        settings = settings or ModelSettings()
         scorers: dict[str, Scorer] = {
             "popularity": PopularityScorer().fit(data),
             "bayesian_average": BayesianAverageScorer().fit(data),
             "random": RandomScorer(seed=seed).fit(data),
-            "content": ContentScorer().fit(data),
-            "item_knn": ItemKNNScorer().fit(data),
-            "svd": SVDScorer(seed=seed).fit(data),
+            "content": ContentScorer(weights=settings.content_weights).fit(data),
+            "item_knn": ItemKNNScorer(
+                neighbours=settings.neighbours,
+                shrinkage=settings.shrinkage,
+                min_support=settings.min_support,
+            ).fit(data),
+            "svd": SVDScorer(factors=settings.factors, seed=seed).fit(data),
         }
         knn, svd, bayes = (
             scorers["item_knn"],
@@ -235,6 +242,7 @@ class Recommender:
                 "item_knn": {
                     "neighbours": knn.neighbours,
                     "shrinkage": knn.shrinkage,
+                    "min_support": knn.min_support,
                 },
                 "svd": {"factors": svd.factors, "seed": svd.seed},
                 "random": {"seed": seed},

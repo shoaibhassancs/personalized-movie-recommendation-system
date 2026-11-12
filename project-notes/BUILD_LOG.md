@@ -14,17 +14,25 @@ entry-level AI/ML interview.
 ---
 
 ## Current status (2026-11-12)
-- **Phase 1 and Phase 2 are complete (Gates 1 and 2 approved by you). Phase 3 has started:
-  Steps 13 (metrics) and 14 (evaluation harness) are built and verified. Steps 15 to 17 are not
-  started: Step 15 is waiting for your decision on MLflow (a new dependency) and the tuning plan.**
-- What exists: everything from Phase 2, plus `pmrs.metrics` and `pmrs.evaluation`, one command
-  (`uv run python -m pmrs.evaluation`) that compares all eight methods on the **validation**
-  period, and a first set of untuned validation results. 199 tests pass.
-- **No test-period number exists yet.** The test period is protected in code and was not read.
+- **Step 17 done (D-033):** two local artifacts built and verified (evaluated Step 16 fit and an
+  all-data serving fit), with SHA-256 manifests, plus a draft `MODEL_CARD.md`. Step 16 metrics apply to
+  the evaluated model only. **Awaiting your Gate 3 review.** Step 16 (D-032) results are unchanged.
+- **Step 16 done (D-032): the single test read has been run** with the frozen configuration
+  (hash `e68a7ee6...ce2b5`; file status now FROZEN). Results are in `docs/evaluation.md` and
+  `data/processed/final/test/`. Warm NDCG@10: hybrid 0.064, SVD 0.055, popularity 0.047. In the
+  cold-start simulation the hybrid is the popularity fallback. Awaiting your review; Step 17 and
+  Gate 3 are not started. **Nothing may be tuned after this test read.**
+- **Phases 1 and 2 are complete (Gates 1 and 2 approved). Phase 3: Steps 13 (metrics), 14
+  (harness) and 15 (tuning on validation only) are built and run. The selected settings are
+  now frozen (first bullet above; they were proposed when Step 15 finished). Step 16 has run (single test read); Step 17 is built (D-033); Gate 3 awaits you.**
+- What exists: everything from Phase 2, the metrics and evaluation packages, and
+  `uv run python -m pmrs.evaluation.tuning`, which tries 36 configurations in about a minute and logs
+  each to MLflow and to CSV/JSON. 224 tests pass.
+- **The test period has been read once (Step 16).** It stays protected in code; only `pmrs.evaluation.final` can read it and it refuses a second read.
 - **The evaluation claim is narrow:** a per-user holdout, so results support only "methods
   compared under the same per-user holdout protocol", not "leakage-safe" or "predicts the future".
-- **Next:** your decisions for Step 15 (see the last note below); then tuning on validation only,
-  freezing the settings, and only then the single test-period read in Step 16.
+- **Next:** your review of the validation results and the proposed frozen settings (last note
+  below); then Step 16, the single test-period read.
 
 ---
 
@@ -840,3 +848,209 @@ behaviour on different data.
 3. *Item-kNN.* May I add a minimum-support rule (ignore movies with too few supporting
    neighbours), or should I only tune its existing parameters and report it as weak?
 4. *Headline metric.* Confirm NDCG@10.
+
+
+---
+
+## Step 15 · Tuning with MLflow (2026-11-12; D-029)
+
+**What it was for.** Every model had settings I picked as provisional defaults. Tuning means
+changing one setting, refitting on the training data, and comparing the validation-period NDCG@10
+with the default's. The point is to choose settings without ever looking at the test period, so
+that the test result in Step 16 is an honest check.
+
+**What I did.**
+1. *Checked MLflow first, as you asked.* I measured `mlflow-skinny` in a throwaway environment:
+   64 MB including its 39 dependencies, against your 1 GB limit, and free disk stayed at about
+   18 GiB against your 10 GB floor. Both limits passed, so it went in as a dev dependency. The
+   size lookup sent only the package name. One surprise: MLflow 3.18 refuses its plain-folder
+   store unless told `MLFLOW_ALLOW_FILE_STORE=true`. I set that in the code (everything stays on
+   this machine). The first run therefore failed to log to MLflow; I fixed it and ran again. The
+   CSV/JSON log is written either way.
+2. *Added the minimum-support rule to item-kNN* (your approval). A movie rated by fewer than m
+   training users now scores "no evidence" and is listed after every supported movie. It is a
+   scoring change, not a filter: the movie is still a candidate (a test proves that).
+3. *Added `ModelSettings`*, one object carrying the tunable settings into the real
+   `Recommender`, so tuning uses the same code path as serving. With default settings the
+   evaluation output is identical to before (tested).
+4. *Ran 36 configurations in stages* (kNN grid 9, kNN support 3, SVD 3, content weights 9, hybrid
+   many-ratings 6, hybrid few-ratings 6), each stage using the settings adopted earlier, instead
+   of a full cross-product that would mostly find noise with 450 users.
+5. *Selection rule (yours):* the best mean NDCG@10 is adopted only if its paired 95% interval
+   against the reference is entirely above 0. Otherwise the default stays and the comparison is
+   called inconclusive. That is not "equal"; it means the data cannot tell them apart.
+
+**What the numbers say (validation only; NDCG@10, higher is better).**
+- *Item-kNN improved but is still weak.* Default 0.002; neighbours 20 and shrinkage 5 gives 0.013;
+  adding minimum support 20 gives 0.020 [0.014, 0.028]. Popularity is 0.065. The cost of the
+  support rule is variety: the share of the catalogue it ever recommends fell from 0.19 to 0.08.
+  Support 20 was the largest value allowed and it was still the best, so a bigger value might help.
+- *SVD and content: nothing to change.* SVD with 50 factors stayed best; 100 factors was worse.
+  No content weight change was clearly better (inconclusive).
+- *Hybrid, 10 or more ratings (warm users):* the default blend stays. Some alternatives had a
+  slightly higher mean (best +0.007), but the interval touches 0, so it is inconclusive. All of
+  them beat popularity by 0.015 to 0.022 on warm users.
+- *Hybrid, 1 to 9 ratings:* the original weights lost to popularity. The adopted set (no content,
+  no kNN, 30% SVD, 70% popularity) scores 0.050 vs 0.020, a clear improvement. But it only ties
+  popularity (0.048 at 3 revealed ratings, 0.050 at 5). So with 3-5 ratings this data supports
+  little beyond "recommend popular movies"; the tuned rung is nearly pure popularity (it shows
+  0.3% of the catalogue). I did not force a win.
+- *Overall hybrid vs popularity on warm users after tuning:* +0.015 [+0.002, +0.028], a small
+  positive gap; vs SVD alone +0.010 [0.000, 0.021], borderline. The change from tuning on the
+  warm hybrid (0.076 to 0.080) is itself inconclusive.
+- *Still open:* with exactly 10 revealed ratings the hybrid (0.027) is below popularity (0.050;
+  -0.023 [-0.049, -0.002]). That slice was not an objective.
+
+**Caution to carry forward.** Picking the best of about 36 tries on the same users makes these
+validation numbers optimistic, which is why Step 16's untouched test period matters. Intervals
+cover sampling noise between users only; the claim limit is unchanged.
+
+**Proposed frozen settings** (the output of the rule; not frozen yet): kNN neighbours 20,
+shrinkage 5, minimum support 20; SVD 50 factors; content weights all 1; many-ratings blend
+unchanged (0.35 / 0.25 / 0.25 / 0.15); few-ratings blend (content 0, kNN 0, SVD 0.30, popularity
+0.70); the 0-ratings genre/popularity mix unchanged and untuned. File:
+`data/processed/tuning/proposed_frozen_config.json`, SHA-256 `3eb9f692...a246a`.
+
+**Files changed:** new `src/pmrs/evaluation/tuning.py`, `src/pmrs/recommender/settings.py`,
+`tests/test_tuning.py` (13 tests); edited `knn.py`, `recommender.py`, `harness.py`,
+`pyproject.toml`, `uv.lock`; `DECISIONS.md` (D-029), `CLAUDE.md`, `BUILD_PLAN.md`. Outputs in
+`data/processed/tuning/` and `mlruns/` (both git-ignored).
+
+**Verification (2026-11-12):**
+- `uv run pytest`: **PASS**, 212 tests. New ones prove: the minimum-support rule keeps movies
+  eligible and m=0 changes nothing; default settings reproduce the old output exactly; the
+  selection rule adopts a clear gain, keeps the default for a noisy "best", and prefers the
+  default on ties; every read made by the tuning run is the validation period; all 36
+  configurations run once; the frozen file's hash detects tampering; MLflow gets one run per
+  configuration.
+- `ruff check` **PASS**; `ruff format --check` **PASS**; `mypy` strict (33 files) **PASS**.
+- Real tuning run: **PASS** (36 configurations, about 47 s). MLflow logging: **PASS** on the
+  second run (see above).
+- `uv sync`: **NOT RUN**. Test-period evaluation: **NOT RUN** by design.
+
+**Not verified / incomplete:** any test result; whether the tuned settings generalise beyond the
+validation users; whether support above 20 helps; why the hybrid trails popularity at exactly 10
+revealed ratings; the 0-ratings mix (untuned).
+
+**Where I need you before Step 16:**
+1. *Freeze the proposed settings?* Recommended: yes, as the rule produced them. The alternative
+   is to keep the original few-ratings weights so the content model still drives that rung, at a
+   measured cost on this data.
+2. *Try minimum support above 20* (for example 30, 50)? This would be a small extra grid, still
+   validation-only.
+3. *Look at the 10-revealed gap to popularity* before the test read, or accept it and report it?
+4. *Accept leaving the 0-ratings genre/popularity mix untuned?*
+
+**Interview questions.**
+- *Why tune on validation and not test?* Tuning picks the luckiest setting; scoring it on the same
+  data overstates it. Test is read once, after the settings are frozen.
+- *Why not a full grid?* With 450 users, many combinations would mostly find noise, and the
+  winner's score is inflated by the number of tries.
+- *What does "inconclusive" mean?* The paired interval includes 0, so the data cannot separate the
+  two; we keep the simpler default.
+- *Why did the tuned few-ratings rung become almost popularity?* The personalised parts did not
+  beat it on this data with 3-5 ratings; reporting that is more honest than forcing a win.
+
+
+---
+
+## Step 15, part 2 · Your configuration choices applied and checked (2026-11-12; D-030)
+
+**What you decided (from the validation results and the diagnostic).** These are *your decisions
+based on validation*, not tuning results:
+- Pure popularity for users with 1 to 10 ratings. The tuned SVD/popularity blend only tied it.
+  (Its extra variety was tiny: 33-34 distinct movies across 119 users against 13-14.)
+- In the cold-start simulation (0, 3, 5, 10 revealed ratings) use popularity. The hybrid tied it
+  at 3 and 5 and was worse at 10 (-0.023, interval excludes 0). Warm users keep the 10+ hybrid.
+- Everything else from the grid stays, item-kNN minimum support stays at 20 (nothing above 20 was
+  searched), and the 0-rating genre mix stays provisional and untuned.
+
+**How I built it.** There is one ladder in the code, not a special rule for evaluation: 0 ratings
+use the genre mix (or popularity with no genres), 1 to 10 ratings use popularity, 11 or more use the
+hybrid. This matches your two groups because every warm user has at least 12 ratings. One side
+effect to know about: a person with exactly 11 ratings gets the hybrid, and that was never
+evaluated. The grid result is kept as `grid_winner_config.json`; the selected configuration is
+`proposed_frozen_config.json`, with a section saying which choice is a grid winner, a default
+kept, your decision, or untuned. The code defaults themselves are unchanged.
+
+**What the checks showed (validation only).** All 18 checks passed. Every evaluated user lands on
+the intended rung. For all 119 cold-start users at 0, 3, 5 and 10 revealed ratings the hybrid's
+top-20 list is exactly the popularity list, so the paired difference is exactly 0. The warm hybrid
+and the other models are identical to the grid run (0.080 for the warm hybrid). Plainly: the
+cold-start numbers (0.046, 0.048, 0.050, 0.050 NDCG@10) are now popularity's own numbers, and
+Step 16 must report them as the popularity fallback, not as a hybrid success. The warm hybrid
+beats popularity by +0.015 [+0.002, +0.028] and SVD by +0.010 [0.000, 0.021].
+
+**Files changed:** new `src/pmrs/evaluation/selection.py`; `tuning.py` now writes
+`grid_winner_config.json`; 3 new tests in `tests/test_tuning.py`; `DECISIONS.md` (D-030),
+`CLAUDE.md`, `BUILD_PLAN.md`. No dependency added. No Git. Split and candidate rules unchanged.
+
+**Verification (2026-11-12):** `uv run pytest` **PASS** (215). `ruff check` **PASS**; `ruff format
+--check` **PASS**; strict `mypy` (34 files) **PASS**. Routing and result checks
+(`python -m pmrs.evaluation.selection`) **PASS** (18 of 18). `uv sync` **NOT RUN**. Test-period
+evaluation **NOT RUN** by design.
+
+**Not verified:** any test result; whether these choices hold beyond these validation users (they
+were made after seeing them); users with exactly 11 ratings.
+
+**Waiting for you:** approval to freeze the file `data/processed/tuning/proposed_frozen_config.json`
+before Step 16.
+
+---
+
+## Step 16 · Final test evaluation (2026-11-12)
+
+**What was done.** You asked for three preflight items before the test read. (1) The frozen
+config's `status` text said "PROPOSED"; it now says FROZEN. The recorded hash covers only the
+settings fields (the `status` and `sha256` fields are left out of it), so editing the status
+did not change it; I recomputed it (it still equals `e68a7ee6...ce2b5`) and confirmed
+`load_frozen` accepts the file. No model setting changed. (2) `uv sync --locked --dry-run` previewed
+no additions, removals or changes, so I ran `uv sync --locked`, which also changed nothing.
+(3) I built `pmrs.evaluation.final`, the only module that passes `allow_test=True`. It checks the
+file is marked FROZEN and has the approved hash, runs one evaluation, writes results and five
+Plotly charts, and refuses to run a second test read. A guard also stops `selection` from rewriting
+a frozen file. Then a validation dry run (warm hybrid 0.080, matching Step 15), then the one
+test read.
+
+**Results (test).** Warm users (453): hybrid 0.064 [0.052, 0.077] NDCG@10, SVD 0.055, popularity 0.047,
+Bayesian average 0.032, item-kNN 0.021, content 0.007, random 0.002. The hybrid beat popularity by
++0.017 [+0.006, +0.029] and SVD by +0.009 [+0.001, +0.017]; the SVD lead is small. Cold-start
+simulation (113 users): the hybrid is popularity's own list (0.031 to 0.035), so it has no
+advantage there; Bayesian average was nominally a little higher but within noise. Warm validation
+0.080 against test 0.064 is the expected optimism from tuning on validation. Full tables and
+caveats: `docs/evaluation.md`.
+
+**Checks.** pytest (220) PASS; ruff check and format PASS; strict mypy (35 files) PASS; `uv sync
+--locked` PASS (no changes); validation dry run PASS; test run PASS; summary means equal per-user
+means for all 120 rows, report values match the CSVs, and result files carry the frozen hash PASS.
+
+**Not verified.** Anything beyond the per-user holdout claim; real new-user behaviour; 11
+ratings exactly. Choices were made after viewing validation results. No Git command run.
+
+**Interview questions.** Why is a tuned hybrid's validation score higher than its test score? What
+does it mean that the cold-start "hybrid" is just popularity? Why a paired bootstrap?
+
+---
+
+## Step 17 · Serving artifacts and model card draft (2026-11-12)
+
+**What was done.** Checked your proposal against the code first: no material differences. The
+existing artifact code already refused to overwrite and checked size and SHA-256 of the model file,
+so I reused it and added what was missing: an all-data fit (`serving_fit_data`), a manifest covering
+every file in the folder, a provenance file stating what each fit used, and a build and verify
+command (`pmrs.evaluation.serving`). I put it in the evaluation package so the recommender package
+does not depend on evaluation code. `evaluated_step16` reproduces the Step 16 fit with the frozen
+config (73,483 fit ratings and 9,742 items, equal to the Step 16 run). `serving_all_data` uses all
+100,836 ratings, 610 users and 3,683 tags. Sizes: 4.7 MB and 5.3 MB; free disk stayed about 18.2 GB.
+
+**Checks.** 21 load-and-recommend checks PASS (listed in D-033). pytest 224, ruff, strict mypy PASS.
+Step 16 result files and `docs/evaluation.md` byte-identical before and after PASS. Test metrics
+recomputed NOT RUN (not needed, and the test period stays read once). `uv sync` NOT RUN.
+
+**Diagnostic only.** Same profile into both models: all 40 sampled lists differ (mean top-10 overlap
+0.60), as expected with more data. Not a quality measure.
+
+**Not verified.** Any metric for the serving artifact; exactly 11 ratings; real-user behaviour. No Git.
+
+**Interview questions.** Why can the serving model not be scored? What does a hash manifest protect
+against, and what can it not? Why keep an evaluated artifact as well?

@@ -22,10 +22,12 @@ explanations; one `Recommender` class; joblib artifacts with metadata; a small C
 Steps 6-12), `pmrs.metrics` and `pmrs.evaluation` (Phase 3 Steps 13-14: metrics, bootstrap
 intervals, and a harness that compares all methods on the validation period), tests, and an EDA
 notebook; MovieLens data in `data/raw/` (git-ignored). Gates 1 and 2 are approved. Phase 3 is in
-progress: Steps 15-17 (MLflow tuning, the single test read, final artifacts) have not started and
-no test-period number exists. No API or UI yet. Strict mypy passes; scikit-learn is untyped, so
-its values are `Any` via one approved override (D-025). All hybrid weights and cut-offs are
-provisional and untuned until Step 15 (D-026). A `.joblib` artifact is a pickle: load only
+progress: Step 15 (validation-only tuning, `pmrs.evaluation.tuning`, MLflow via `mlflow-skinny`) has
+run and its proposed frozen settings await owner approval (D-029; D-030 sets pure popularity
+for 1-10 ratings and the cold-start simulation, 10+ hybrid for warm users); Step 16 (the single test read, `pmrs.evaluation.final`, D-032) has run and awaits owner review; the test period must not be read again or used to tune; Step 17 (D-033: `evaluated_step16` and all-data `serving_all_data` artifacts, `MODEL_CARD.md` draft) is built and awaits the owner's Gate 3 review; the Step 16 metrics apply only to the evaluated artifact. No API or UI yet. Strict mypy passes; scikit-learn is untyped, so
+its values are `Any` via one approved override (D-025). The code defaults are still the provisional
+untuned values (D-026); the tuned values exist only in the proposed config file until the owner
+freezes them. A `.joblib` artifact is a pickle: load only
 artifacts this project built. Check `project-notes/BUILD_LOG.md` for what is actually built;
 never assume a step is done unless the log says it was run and verified.
 
@@ -124,5 +126,9 @@ uv run python -m pmrs.recommender.smoke   # fit each model + the hybrid on valid
 uv run python -m pmrs.recommender.cli build --target validation   # save an artifact (never overwrites)
 uv run python -m pmrs.recommender.cli recommend --artifact data/processed/artifacts/validation --ratings 318:5,296:4.5 -k 10
 uv run python -m pmrs.evaluation   # compare all methods on the VALIDATION period; writes data/processed/evaluation/ (Step 14)
+uv run python -m pmrs.evaluation.tuning   # Step 15: 36 validation-only trials; writes data/processed/tuning/ and mlruns/ (~1 min)
+uv run python -m pmrs.evaluation.final --target validation   # Step 16 dry run (the test read, already done once, needs --read-test-once and refuses a repeat)
+uv run python -m pmrs.evaluation.serving verify   # Step 17: check both artifacts (build refuses to overwrite; they already exist)
+uv run python -m pmrs.evaluation.selection   # Step 15: apply the owner's choices (D-030), write the proposed config, run the routing checks
 ```
 Add new commands here only once they work.

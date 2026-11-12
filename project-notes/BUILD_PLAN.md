@@ -225,18 +225,23 @@ Packages: mlflow (size to be checked first; `mlflow-skinny` is the fallback), pl
   `data/processed/evaluation/validation/` (git-ignored); rerun verified byte-identical; the test
   period is protected (`allow_test`); first untuned validation results recorded in D-028.
 
-**Step 15. Tuning with tracking** (NOT started: waiting for the MLflow dependency decision, the
-grid, and the item-kNN question in D-028)
-- Goal: choose settings without touching test. Needs: 14. Method: small grid evaluated in
-  validation mode (models fitted on train data, scored on the validation period) for
-  neighbours, SVD rank, feature-group weights, hybrid blend; each run logged to MLflow (local
-  file store, git-ignored). Validation is used for tuning only; the chosen configuration is then
-  frozen.
-- Output: chosen configuration + MLflow runs. Done when: the test split is provably not read in
-  tuning code (test asserts the harness refuses `test` in tuning mode).
-- Risk: MLflow install size on a 94%-full disk; check first (owner decision if >1 GB).
+**Step 15. Tuning with tracking** (built and run 2026-11-12; D-029, D-030; the selected configuration is
+proposed and awaits the owner's approval to freeze)
+- Goal: choose settings without touching test. Needs: 14. Method: 36 configurations in stages
+  (item-kNN neighbours x shrinkage, item-kNN minimum support, SVD factors, content feature-group
+  weights, hybrid weights for the many- and few-ratings rungs) evaluated in validation mode;
+  each logged to MLflow (`mlflow-skinny`, local file store, git-ignored) and to CSV/JSON. Rule:
+  adopt the best NDCG@10 only if its paired 95% interval against the default is entirely above 0.
+- Output: `data/processed/tuning/` (trials, stage tables, before/after, proposed frozen config with
+  SHA-256) and 36 MLflow runs. Done: a test records every target tuning touches (only
+  `validation`) and the harness still refuses `test`. NOT frozen until the owner approves.
+- MLflow size was checked first: 64 MB with dependencies, under the 1 GB limit.
+- After the grid, the owner chose pure popularity for 1-10 ratings and for the cold-start
+  simulation (0, 3, 5, 10 revealed) and kept the 10+ hybrid for warm users (D-030, an owner
+  decision, not a grid winner). `pmrs.evaluation.selection` writes the proposed config and runs
+  the validation routing checks (18 PASS).
 
-**Step 16. Final test evaluation and report**
+**Step 16. Final test evaluation and report** (built and run 2026-11-12; D-032; `docs/evaluation.md`; awaiting owner review)
 - Goal: the headline results. Needs: 15. Method: refit the frozen configuration on train +
   validation, then read the test period once; bootstrap 95% intervals over
   users; separate cold-start simulation; charts in Plotly; written `docs/evaluation.md` with caveats
@@ -247,7 +252,7 @@ grid, and the item-kNN question in D-028)
 - Decision (owner): if hybrid does not beat the best single method, we report it and discuss
   rather than tuning on test.
 
-**Step 17. Final serving artifacts and model card draft**
+**Step 17. Final serving artifacts and model card draft** (built and verified 2026-11-12; D-033; `MODEL_CARD.md`; awaiting Gate 3)
 - Goal: artifacts for the API. Needs: 16. Method: refit chosen configuration on all MovieLens
   data; save with version metadata; draft `MODEL_CARD.md`.
 - Output: artifact files (git-ignored) + model card draft. Done when: load-and-recommend test
