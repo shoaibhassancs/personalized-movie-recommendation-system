@@ -1,11 +1,15 @@
-# Model card (DRAFT) - PMRS movie recommender
+# Model card - PMRS movie recommender
 
-Status: draft for owner review at Gate 3. Not a product; a portfolio project.
+Status: **pending owner review as the V1 model card (Step 34).** The model, configuration and
+every number below are unchanged from the Gate 3 draft (approved, D-034); only this status, the
+intended-use note and the attribution were edited. Not a product; a portfolio project.
 
 ## Intended use
-Ranked, explained movie suggestions in a demo web app (a later phase). Not for decisions about
-people, not commercial (MovieLens is licensed for non-commercial use; cite Harper and Konstan,
-2015, "The MovieLens Datasets: History and Context").
+Ranked, explained movie suggestions in a demo web app that runs on one machine (there is no
+hosted deployment). Not for decisions about people, not commercial (MovieLens is licensed for
+non-commercial use). Data: MovieLens `ml-latest-small` from GroupLens (University of Minnesota),
+not endorsed by them. Please cite F. Maxwell Harper and Joseph A. Konstan, 2015, "The MovieLens
+Datasets: History and Context", ACM TiiS 5(4), 19:1-19:19, <https://doi.org/10.1145/2827872>.
 
 ## What the artifacts are
 Two local, git-ignored folders in `data/processed/artifacts/`, each with a SHA-256 manifest

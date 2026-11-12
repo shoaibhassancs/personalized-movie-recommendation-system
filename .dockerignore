@@ -1,0 +1,27 @@
+# Build context for the API image (Dockerfile at the repo root). Keep data, secrets,
+# caches, notes and the frontend OUT of the image: data and the serving artifact are
+# mounted at run time (compose.app.yaml), never baked in or copied here.
+.git
+.venv
+.env
+.env.*
+!.env.example
+.mypy_cache
+.pytest_cache
+.ruff_cache
+**/__pycache__
+*.pyc
+.vscode
+.DS_Store
+data
+mlruns
+mlartifacts
+models
+notebooks
+project-notes
+frontend
+tests
+docs
+*.md
+compose*.yaml
+*.code-workspace

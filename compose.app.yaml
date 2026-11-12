@@ -1,0 +1,101 @@
+# The whole app on one machine (Step 31): database, one-shot migrate + seed, API, web.
+# LOCAL ONLY. Every published port is bound to 127.0.0.1. Not a deployment file.
+#
+#   docker compose -f compose.app.yaml up --build
+#   web: http://localhost:8080    api: http://127.0.0.1:8000
+#
+# This file has its OWN project name, database server and volume (pmrs_app_pgdata), so it
+# never touches the development database that compose.yaml / `docker compose up -d db`
+# serves. Settings come from .env (POSTGRES_USER, POSTGRES_PASSWORD, POSTGRES_DB,
+# JWT_SECRET). Use a URL-safe POSTGRES_PASSWORD (it is placed in a database URL).
+# Optional: API_PORT (default 8000) and WEB_PORT (default 8080) change the host ports.
+#
+# Needs on the host: data/raw/ml-latest-small (the seed) and
+# data/processed/artifacts/serving_all_data (the frozen artifact). Both are mounted
+# read-only and are never copied into an image.
+name: pmrs-app
+
+x-api-build: &api-build
+  context: .
+  dockerfile: Dockerfile
+  args:
+    UV_SYNC_ARGS: ${UV_SYNC_ARGS---no-dev}
+
+x-api-env: &api-env
+  DATABASE_URL: postgresql+psycopg://${POSTGRES_USER:?set POSTGRES_USER in .env}:${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env}@db:5432/${POSTGRES_DB:?set POSTGRES_DB in .env}
+
+services:
+  db:
+    image: postgres:17-alpine
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:?set POSTGRES_USER in .env}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env}
+      POSTGRES_DB: ${POSTGRES_DB:?set POSTGRES_DB in .env}
+    volumes:
+      - pmrs_app_pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  migrate:
+    build: *api-build
+    image: pmrs-api:local
+    command: ["sh", "-c", "alembic upgrade head && python -m pmrs.db.seed"]
+    environment: *api-env
+    volumes:
+      - ./data/raw:/app/data/raw:ro
+    depends_on:
+      db:
+        condition: service_healthy
+    restart: "no"
+
+  api:
+    build: *api-build
+    image: pmrs-api:local
+    environment:
+      <<: *api-env
+      JWT_SECRET: ${JWT_SECRET:?set JWT_SECRET in .env (32+ characters)}
+      FRONTEND_ORIGIN: http://localhost:${WEB_PORT:-8080}
+    volumes:
+      - ./data/processed/artifacts/serving_all_data:/app/data/processed/artifacts/serving_all_data:ro
+    ports:
+      - "127.0.0.1:${API_PORT:-8000}:8000"
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+    read_only: true
+    tmpfs:
+      - /tmp
+    cap_drop: [ALL]
+    security_opt:
+      - no-new-privileges:true
+    healthcheck:
+      # the API has no /health route; this only checks that the port accepts connections
+      test: ["CMD", "python", "-c", "import socket; socket.create_connection(('127.0.0.1', 8000), 3)"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 20s
+
+  web:
+    build:
+      context: ./frontend
+      args:
+        VITE_API_URL: http://127.0.0.1:${API_PORT:-8000}
+    image: pmrs-web:local
+    ports:
+      - "127.0.0.1:${WEB_PORT:-8080}:8080"
+    depends_on:
+      api:
+        condition: service_healthy
+    read_only: true
+    tmpfs:
+      - /tmp
+    cap_drop: [ALL]
+    security_opt:
+      - no-new-privileges:true
+
+volumes:
+  pmrs_app_pgdata:

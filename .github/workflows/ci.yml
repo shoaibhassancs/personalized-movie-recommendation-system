@@ -1,0 +1,99 @@
+# Continuous integration (Step 32).
+#
+# STATUS: written, NOT YET RUN. It only runs on GitHub after the owner pushes, and it has
+# never run. Do not describe it as passing until a real run on GitHub shows that.
+#
+# NOT YET PINNED: every `uses:` line below ends in REPLACE_WITH_FULL_COMMIT_SHA. A
+# third-party action must be pinned to a full 40-character commit SHA, and finding the
+# SHA for a version tag means asking GitHub, which needs the owner's approval. Until the
+# placeholders are replaced the workflow will fail at "set up job"; that is intentional.
+#
+# DATA: the MovieLens data and the frozen serving artifact are git-ignored, so they are
+# not in a fresh checkout. Without them these tests SKIP in CI (a skip is NOT a pass):
+#   - tests/test_api_recommendations.py  (16 tests: recommendations from the real artifact)
+#   - tests/test_download.py             (1 test: loads the real MovieLens files)
+# Measured locally by running the suite from a copy with no data (Postgres available):
+# 277 passed, 17 skipped. Without a database too, 61 skip. The CI job below starts a
+# throwaway Postgres, so the 17 above are the expected skips.
+#
+# No secrets are used or committed: the database password is generated fresh on each run
+# and masked, and the Postgres container exists only for the length of the job.
+
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  backend:
+    name: Backend (ruff, mypy, pytest)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@REPLACE_WITH_FULL_COMMIT_SHA # actions/checkout, version tag to be chosen
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@REPLACE_WITH_FULL_COMMIT_SHA # actions/setup-python
+        with:
+          python-version: "3.12"
+      - name: Install uv (same version as local)
+        run: pip install --no-cache-dir uv==0.13.6
+      - name: Install locked dependencies
+        run: uv sync --locked
+      - name: Start a throwaway Postgres
+        run: |
+          PW="$(openssl rand -hex 16)"
+          echo "::add-mask::$PW"
+          docker run -d --name ci-db -e POSTGRES_USER=ci -e POSTGRES_PASSWORD="$PW" \
+            -e POSTGRES_DB=ci_dev -p 127.0.0.1:5432:5432 postgres:17-alpine
+          for i in $(seq 1 30); do
+            docker exec ci-db pg_isready -U ci -d ci_dev && break
+            sleep 2
+          done
+          docker exec ci-db pg_isready -U ci -d ci_dev
+          echo "DATABASE_URL=postgresql+psycopg://ci:${PW}@127.0.0.1:5432/ci_dev" >> "$GITHUB_ENV"
+          echo "TEST_DATABASE_URL=postgresql+psycopg://ci:${PW}@127.0.0.1:5432/ci_test" >> "$GITHUB_ENV"
+      - name: Lint (ruff check)
+        run: uv run ruff check
+      - name: Format check (ruff format --check)
+        run: uv run ruff format --check
+      - name: Type check (mypy, strict)
+        run: uv run mypy
+      - name: Tests (pytest; -rs lists every skipped test)
+        run: uv run pytest -rs
+
+  frontend:
+    name: Frontend (typecheck, lint, format, test, build)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    defaults:
+      run:
+        working-directory: frontend
+    steps:
+      - uses: actions/checkout@REPLACE_WITH_FULL_COMMIT_SHA # actions/checkout
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@REPLACE_WITH_FULL_COMMIT_SHA # actions/setup-node
+        with:
+          node-version: "22"
+      - name: Install locked packages (no audit)
+        run: npm ci --no-audit --no-fund
+      - name: Typecheck
+        run: npm run typecheck
+      - name: Lint
+        run: npm run lint
+      - name: Format check
+        run: npm run format:check
+      - name: Tests
+        run: npm test
+      - name: Build
+        run: npm run build

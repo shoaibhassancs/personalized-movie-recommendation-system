@@ -1004,3 +1004,28 @@ Cleanup done with it: with no API or frontend server running (checked: nothing l
 it had 0 open connections, and only `pmrs_test` was dropped. Afterwards the server lists only `pmrs`. The
 development database was not connected to or changed. The unidentified process that had been listening on
 port 8000 earlier is no longer running; what it was connected to was never determined.
+
+## D-045 (2026-11-12): Phase 6 local work approved (Steps 31, 32, 34); cloud deployment not approved
+Owner decision. After reviewing the Phase 6 proposal and a revised one for Render's free plan, the owner
+approved **local work only**: Step 31 (local Docker containerisation), Step 32 (the CI workflow file),
+Step 34 (documentation), and local checks that need no Git push. The budget is a strict **$0**: no payment
+method, upgrade or paid fallback. **Not approved:** cloud deployment, publishing, uploading anything (image,
+code, artifact, MovieLens data), pushing, running Git commands, and Phase 6B hardening. Step 33 stays a
+**gated possibility** with Render's free plan preferred if feasible; it is neither dropped nor decided
+(`docs/hosting-gate.md`). The owner will review and push the changes personally. Downloads for image builds
+(base images, PyPI and npm packages) need a separate approval of exactly what is fetched; none has been made.
+
+Recommendations I made while preparing the work (not owner decisions): the full-stack file is a **separate**
+`compose.app.yaml` with its own project name, database server and volume, so running it can never touch the
+development database that `compose.yaml` serves; data and the frozen artifact are mounted read-only rather
+than baked into an image; the API and web containers run as non-root with a read-only filesystem; CI uses
+only GitHub's own actions plus plain `run` steps, generates its database password at run time, and lists its
+skipped tests. Step 35 (final verification) is not started.
+
+Findings that need the owner (open): (1) `pmrs.api.app` imports `pmrs.evaluation.final`, which imports
+`plotly`, declared only in the dev dependency group, so an image built with `--no-dev` would fail at
+start-up (options: move `plotly` to the main dependencies, make that import lazy in frozen evaluation code,
+or build the image with the dev group); (2) the CI workflow's action references are unpinned placeholders
+until the owner approves looking up their commit SHAs; (3) no code licence, screenshots or deployment URL
+exist and none was invented. Unchanged and binding: the frozen ML core and its claim limit, the local-only
+status of the API, and the serving artifact's lack of any quality metric.
