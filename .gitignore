@@ -37,8 +37,8 @@ htmlcov/
 node_modules/
 /frontend/dist/
 
-# Private planning notes (owner decision D-012)
-/project-notes/
+# Planning notes: tracked for now at the owner's request (2026-11-12).
+# To make them private again, re-add the line: /project-notes/
 
 # Logs
 *.log

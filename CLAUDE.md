@@ -16,9 +16,11 @@ defaults** until the step or gate that decides them. Do not copy them into this 
 
 ## Current state
 Python 3.12 uv project: `pmrs.data` (download, loaders, validation), `pmrs.split` (per-user
-holdout, ID maps, sparse matrix, evaluation groups, feasibility tables), tests, and an EDA
-notebook; MovieLens data in `data/raw/` (git-ignored). No models yet. Step 5 is built; Gate 1
-awaits owner approval. Check
+holdout, ID maps, sparse matrix, evaluation groups, feasibility tables), `pmrs.recommender`
+(baselines, content-based, item-kNN, SVD behind a provisional scoring interface; Phase 2 Chunk A,
+Steps 6-9), tests, and an EDA notebook; MovieLens data in `data/raw/` (git-ignored). Gate 1 is
+approved. No hybrid, explanations, `Recommender` class, metrics, API or UI yet. Strict mypy passes; scikit-learn is
+untyped, so its values are `Any` via one approved override (D-025). Check
 `project-notes/BUILD_LOG.md` for what is actually built; never assume a step is done unless the
 log says it was run and verified.
 
@@ -60,7 +62,7 @@ It is the owner's readable record of progress, written like the reference
   inspection is fine.
 - **Dependencies:** explain why and wait for approval before each new set. Declare every package
   the code imports in `pyproject.toml`.
-- **Resources:** machine facts are in the guide §10 (8 GB RAM, about 12 GiB free disk). Re-check
+- **Resources:** machine facts are in the guide §10 (8 GB RAM; about 17.6 GiB free disk measured 2026-11-12, volume ~92% full). Re-check
   memory/disk before clearly heavy work (Docker builds, MLflow install, `node_modules`, full
   evaluation, large downloads) and recommend a smaller option if it may not fit.
 - **No uploading or contacting outside services** and no exposing data, secrets, tokens or model
@@ -109,5 +111,6 @@ uv run mypy           # type-check src/
 uv run ruff format    # format code (add --check to only check)
 uv run python -m pmrs.data.download   # fetch MovieLens into data/raw/ (already done once)
 uv run python -m pmrs.split           # build the split, print and save feasibility tables (Step 5)
+uv run python -m pmrs.recommender.smoke   # fit each model on validation data: time, memory, sample lists (Steps 6-9)
 ```
 Add new commands here only once they work.

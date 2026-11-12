@@ -325,3 +325,67 @@ exists). Step 1 still has to finish its other work, so it is **not** marked done
   user's cutoff (D-022).
 - **Records updated:** `CLAUDE.md`, `PROJECT_GUIDE.md` §7, `BUILD_PLAN.md` Steps 5 and 14,
   `BUILD_LOG.md`. D-021 and D-022 are kept as written.
+
+## D-024 · 2026-11-12 · Owner decision and record · Gate 1 approved; Phase 2 Chunk A (Steps 6-9) approved and built
+- **Owner decision:** Gate 1 approved. Phase 1 is complete and the Step 5 protocol in D-021 and D-023
+  is accepted, including its stated limits. The claim stays "methods compared under the same
+  per-user holdout protocol"; models are fitted once and still see other users' ratings and tags
+  dated after a scored user's own cutoff.
+- **Owner decision:** Phase 2 Chunk A = Steps 6-9 only (baselines, content-based, item-kNN, SVD,
+  with a shared scoring interface and tests). The hybrid, explanations, artifact packaging,
+  metrics, API, database, frontend and deployment were not started.
+- **Owner decision:** `scikit-learn` added as a runtime dependency. Resolved to scikit-learn 1.9.1;
+  it also installed `joblib` 1.6.0, `threadpoolctl` 3.8.0 and `cloudpickle` 3.1.2. Measured:
+  `.venv` grew from 387 MB to 434 MB; free disk was 17.7 GiB before the install and 17.6 GiB
+  after (the older "about 12 GiB" figure in `CLAUDE.md` was out of date).
+- **`joblib` is not declared in `pyproject.toml` yet** because no code imports it. It is declared
+  when artifact save/load is written (Step 12). This is the one place where the plan wording
+  ("declared") is followed later rather than now; it was stated in the Chunk A proposal.
+- **Provisional defaults (owner: keep as provisional, tune on validation only at Step 15; not
+  final):** Bayesian prior strength 10; kNN neighbours 50 and shrinkage 10; SVD factors 50
+  (seed 42); content feature-group weights all 1.0 (genres, tags, title words, decade);
+  random seed 42.
+- **Interpretations I made (mine, not owner decisions; reviewable):**
+  (a) kNN score = shrunk-similarity-weighted average of the user's centred ratings over the
+  movie's kept neighbours; only positive similarities are kept; a movie with no neighbour in the
+  user's history has no evidence and scores `-inf` (ranked last). No extra damping term.
+  (b) SVD ranks by the unclipped predicted deviation (so scores do not tie at 0.5 and 5);
+  `predict_ratings` gives the clipped 0.5-5 value. Unrated cells count as "the user's average"
+  (a TruncatedSVD property; there is no ALS or FunkSVD in scikit-learn).
+  (c) Content profile: items rated above the user's own mean, weighted by the gap; if none, all
+  history items weighted by rating; empty history scores zero everywhere.
+  (d) `RandomScorer` draws from the seed plus the user's history, so results are reproducible.
+  (e) Because the history excludes exactly the revealed or pre-cutoff items, "exclude the history"
+  equals the D-023 candidate rule; a test confirms this against `candidate_items`.
+- **Memory design:** the item-item similarity matrix is never held in full; it is computed
+  500 movies at a time and reduced to the top neighbours (tested against a brute-force
+  calculation for several block sizes).
+- **Open (needs owner decision): strict mypy.** scikit-learn 1.9.1 ships no type information
+  (`import-untyped`), which gives 3 strict-mypy errors at the three `sklearn` imports
+  (`sklearn.decomposition`, `sklearn.feature_extraction.text`, `sklearn.preprocessing`). Nothing
+  was changed to hide them. Options: (1) one `[[tool.mypy.overrides]]` entry for `sklearn.*`
+  (config change; scikit-learn values become `Any`); (2) three inline `type: ignore` comments
+  (the approach first used for SciPy); (3) a third-party stubs package, which I have not
+  searched for and which would need your approval as a dependency. I recommend (1).
+- **Checks (2026-11-12):** pytest PASS (105 tests: 63 earlier + 42 new); ruff check PASS; ruff
+  format --check PASS; mypy strict **FAIL** (3 errors, all the scikit-learn issue above);
+  `uv run python -m pmrs.split` PASS; real-data smoke run PASS (see BUILD_LOG for numbers).
+- **Not verified:** recommendation quality (no metric was computed; metrics are Phase 3); SVD and
+  kNN under the test refit (the smoke run used the validation fit only); behaviour on any data
+  other than `ml-latest-small`. Sample lists are a human spot check, not evidence.
+- **Records updated:** `CLAUDE.md`, `BUILD_PLAN.md` (Steps 6-9 status), `BUILD_LOG.md`.
+
+## D-025 · 2026-11-12 · Owner decision · One mypy override for scikit-learn (resolves the open item in D-024)
+- **Owner decision:** approve one narrow `[[tool.mypy.overrides]]` entry (`module = "sklearn.*"`,
+  `ignore_missing_imports = true`) in `pyproject.toml`. No stubs dependency and no inline
+  `type: ignore` comments.
+- **Result (2026-11-12):** strict `mypy` **PASS**, no issues in 17 source files; no additional
+  errors appeared, so no project code needed changing. `grep` finds 0 `type: ignore` in `src`.
+  Also re-run: pytest PASS (105), ruff check PASS, ruff format --check PASS,
+  `python -m pmrs.split` PASS, smoke run (SVD model) PASS, `uv sync` PASS (61 packages).
+- **Known limitation:** scikit-learn values (the TF-IDF vectorizers, `normalize`, `TruncatedSVD`
+  and what they return) are `Any`, so mypy does **not** check how they are used. Our own code
+  around them is still checked strictly; the behaviour of those calls is covered by the tests,
+  not by the type checker.
+- **Unchanged:** split protocol, model behaviour, scope. Chunk B not started. This supersedes the
+  "strict mypy FAIL" status in D-024.

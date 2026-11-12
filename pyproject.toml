@@ -6,6 +6,7 @@ requires-python = "==3.12.*"
 dependencies = [
     "numpy>=2.5.4",
     "pandas>=3.1.1",
+    "scikit-learn>=1.9.1",
     "scipy>=1.18.1",
 ]
 
@@ -47,3 +48,9 @@ dev = [
 [tool.ruff.lint.per-file-ignores]
 # Notebooks print long f-strings; line length is not enforced there.
 "*.ipynb" = ["E501"]
+
+[[tool.mypy.overrides]]
+# scikit-learn 1.9.1 ships no type information (D-025). Its values are Any and are
+# not checked by mypy; our own code around them still is.
+module = "sklearn.*"
+ignore_missing_imports = true
