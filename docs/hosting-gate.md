@@ -58,3 +58,21 @@ GroupLens README.
 The code (a push, with a repository visibility decision), the model artifact (MovieLens-derived),
 the MovieLens data or a dump of the seeded database, and any container image. Rebuilding the
 artifact on the host is not an option: it would not match the frozen manifest and Step 16.
+
+## Results so far (local, 2026-11-12; one Mac, Docker Desktop, arm64; estimates only)
+Measured with `compose.app.yaml` after the owner approved the local build (D-047). Nothing was
+uploaded and no host was contacted. **None of this proves a free host will work**: the host's real
+limits are still unread, and a Mac VM is not the host's hardware.
+
+| # | Measurement | Result |
+|---|---|---|
+| 1 | Image size | API 636 MB on disk, about 131 MB compressed (`docker save` through gzip: 130 MB). Web 92.6 MB on disk, about 26 MB compressed. The compressed figures include the shared base layers. Compare with the host's documented compressed-image limit: **not done** (limit not read). |
+| 2 | API peak RAM, 512 MB limit, swap off, 0.1 CPU | Start-up about 190 MiB. After one register, one login, 11 ratings, one recommendation and one dashboard: about 250 MiB. 2 / 3 / 4 simultaneous register+login: 318 / 382 / 447 MiB peak. **8 simultaneous register+login: the container was OOM-killed (exit 137)**: each Argon2id hash uses 64 MiB (the library default). Result: **FAIL for an unthrottled public API**; it needs a cap of about 3-4 concurrent hashes (Phase 6B work, not built). |
+| 3 | Cold start at 0.1 CPU | About 3.7-4 minutes from container start to the first HTTP 200 (two runs). Unthrottled: about 10-15 seconds. If a host also has a short start-up or port-check timeout, this could fail it (**recheck in its docs**). |
+| 4 | Latency at 0.1 CPU | Single register 11.6 s, single login 6.1 s, recommendation 1.2 s, dashboard 0.6 s (one run each). |
+| 5 | Database size | `pg_database_size` 18.4 MB after seeding; the Docker volume holds 92.5 MB on disk. Compare with the free database's limit: **not done** (limit not read). Growth per user was not measured. The expiry still rules out persistent data. |
+| 6 | Frontend bundle | About 301 kB JavaScript and 11.9 kB CSS (earlier build). |
+| 7 | Secret scan | The JWT secret and database password were searched for in both images' history and metadata and in all container logs: 0 occurrences. The files inside image layers were not scanned, but `.env` and `data/` are not in the API image (listed). Runtime environment variables are visible to `docker inspect` on this machine, as expected. |
+
+Not measured: behaviour on the host's CPU and memory, many users, long runs, a real browser
+against the containers.

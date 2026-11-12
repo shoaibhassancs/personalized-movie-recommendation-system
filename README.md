@@ -14,7 +14,7 @@ and none is approved. The API is not safe to expose to the internet (see
 | Code licence | **Not chosen yet.** No licence file exists, so no one is granted reuse rights. The owner must pick one. |
 | Screenshots | **None yet.** To be taken by the owner. |
 | Hosted demo | **None.** See [docs/hosting-gate.md](docs/hosting-gate.md) for what would have to be true first. |
-| Docker run | Files written; **not yet built or run** (NOT RUN). See [Run with Docker](#run-with-docker). |
+| Docker run | Built and run locally once; round trip passed. See [Run with Docker](#run-with-docker). |
 | CI | Workflow written; **never run** (it only runs on GitHub after a push). See [CI](#continuous-integration). |
 
 ## What it does
@@ -79,8 +79,8 @@ evaluation) is described in `CLAUDE.md`. Artifacts are pickles: load only ones t
 
 ## Run with Docker
 Files: `Dockerfile` (API), `frontend/Dockerfile` (static site served by nginx),
-`compose.app.yaml` (database, migrate + seed, API, web). **Status: written, validated as
-configuration only, not built or run (NOT RUN).**
+`compose.app.yaml` (database, migrate + seed, API, web). **Status: built and run locally on one
+Mac (2026-11-12); see "What was measured" below. Not run on any other machine or OS.**
 
 ```bash
 docker compose -f compose.app.yaml up --build
@@ -91,11 +91,22 @@ docker compose -f compose.app.yaml up --build
 - Needs `data/raw/ml-latest-small` and `data/processed/artifacts/serving_all_data` on the host;
   both are mounted read-only, never copied into an image.
 - `VITE_API_URL` is baked into the frontend at build time. Ports are bound to `127.0.0.1`.
-- **Open issue:** the API imports `plotly` (through `pmrs.evaluation.final`), which is declared
-  only as a development dependency. The default `--no-dev` image would fail at start-up. Until
-  the owner decides how to fix it, build with `UV_SYNC_ARGS= docker compose -f compose.app.yaml up --build`
-  (installs the dev group too; larger image).
+- The image installs only runtime packages (`--no-dev`). The API used to import `plotly` (a
+  dev-only package) at start-up through `pmrs.evaluation.final`; that import now happens inside
+  the chart functions (D-047). Set `UV_SYNC_ARGS=` to include the dev group anyway.
 - The 512 MB figure for some free hosts is a **runtime memory** limit, not an image-size limit.
+
+What was measured (one Mac, Docker Desktop, arm64; local estimates only):
+- Seed in containers: 610 users, 9,742 movies, 100,836 ratings, verified against the CSVs.
+- Round trip through the real ports (register, login, dashboard, rate 11 movies, hybrid
+  recommendations, analytics, CORS allowed/refused origin, delete account): 11 of 11 checks passed.
+- Image sizes: API 636 MB on disk, about 131 MB compressed; web 92.6 MB on disk, about 26 MB
+  compressed. Both run as non-root users; no `.env`, data or secret is in either image.
+- API memory with a 512 MB limit, swap off and 0.1 CPU: start-up peak about 190 MiB; after one
+  login, 11 ratings and a recommendation about 250 MiB; 2, 3 and 4 simultaneous
+  register+login reached 318, 382 and 447 MiB; **8 simultaneous register+login got the API
+  OOM-killed** (each password hash uses 64 MiB). Cold start at 0.1 CPU took about 3.7-4 minutes
+  (about 10-15 seconds unthrottled). This is not evidence about any hosting provider.
 
 ## Checks
 ```bash
@@ -107,10 +118,11 @@ tests and 75 frontend tests passed.
 
 ## Continuous integration
 `.github/workflows/ci.yml` runs the commands above on GitHub Actions with a throwaway Postgres.
-**It has not passed yet.** Its first GitHub run failed during job setup because the action
+**Its first GitHub run failed during job setup because the action
 references were placeholders (owner-reported). They are now pinned to full commit SHAs
-(`actions/checkout` v7.0.1, `actions/setup-python` v7.1.0, `actions/setup-node` v7.1.0), but the
-corrected file has not been pushed or re-run, so CI is **NOT VERIFIED**. A fresh checkout has no
+(`actions/checkout` v7.0.1, `actions/setup-python` v7.1.0, `actions/setup-node` v7.1.0), and the
+corrected workflow then **passed on GitHub (owner-reported; I did not see the run)**. Tests that need
+data skip there and count as NOT RUN, not passed. A fresh checkout has no
 MovieLens data and no artifact, so in CI these **skip (not pass)**: 16 tests in
 `tests/test_api_recommendations.py` and 1 in `tests/test_download.py` (checked by running the
 suite from a copy without data: 277 passed, 17 skipped). So CI cannot exercise real

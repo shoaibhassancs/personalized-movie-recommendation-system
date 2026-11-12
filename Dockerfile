@@ -15,10 +15,9 @@ ENV UV_PYTHON_DOWNLOADS=never \
 RUN pip install --no-cache-dir uv==0.13.6
 WORKDIR /app
 COPY pyproject.toml uv.lock ./
-# UV_SYNC_ARGS: "--no-dev" keeps the image small, BUT pmrs.api.app imports
-# pmrs.evaluation.final, which imports plotly, and plotly is currently declared only in
-# the dev group. Until that is settled (open owner decision), build with
-# UV_SYNC_ARGS="" to include the dev group. See README "Docker".
+# UV_SYNC_ARGS defaults to "--no-dev". plotly (a dev-only package) used to be imported
+# when the API started; D-047 moved those imports inside the chart functions, so the
+# production image no longer needs it. Set UV_SYNC_ARGS="" only to include the dev group.
 ARG UV_SYNC_ARGS="--no-dev"
 RUN uv sync --locked --no-install-project ${UV_SYNC_ARGS}
 

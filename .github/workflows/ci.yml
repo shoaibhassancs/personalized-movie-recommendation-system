@@ -1,10 +1,10 @@
 # Continuous integration (Step 32).
 #
-# STATUS: corrected locally, NOT YET RE-RUN. The first run on GitHub (owner-reported) failed
+# STATUS: the corrected workflow PASSED on GitHub (owner-reported). The first run failed
 # at "set up job" because the action references were placeholders. They are now pinned to
 # full commit SHAs (version tags in the comments), looked up read-only from the official
 # actions/* repositories on 2026-11-12 as each repository's latest non-prerelease release.
-# The workflow still needs the owner's push and a run before anyone calls it passing.
+# Skipped tests (see DATA below) are NOT RUN, not passed, even in a green run.
 #
 # DATA: the MovieLens data and the frozen serving artifact are git-ignored, so they are
 # not in a fresh checkout. Without them these tests SKIP in CI (a skip is NOT a pass):

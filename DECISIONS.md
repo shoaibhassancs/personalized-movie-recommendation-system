@@ -1041,3 +1041,26 @@ v7.0.1 (`3d3c42e5aac5ba805825da76410c181273ba90b1`), `actions/setup-python` v7.1
 uses those SHAs with the tags in comments. Not verified: the new major versions' inputs were not tested
 here, and the workflow has not been re-run. It needs the owner's push; until a run succeeds CI is NOT
 VERIFIED. No Git command was run; no application tests or builds were run for this change.
+
+## D-047 (2026-11-12): Plotly imports made lazy; local Docker build and run approved and measured
+Owner decisions. (1) **Plotly option B:** the `plotly` imports in `src/pmrs/evaluation/final.py` moved inside
+`make_charts`, with a `TYPE_CHECKING` import for the two type annotations; `plotly` stays in the dev
+dependency group. This is an import-only refactor: no model logic, evaluation protocol, results, artifacts or
+chart behaviour changed. Checked: the API and seed import with `plotly` and the other dev packages blocked;
+all five charts still generate from the saved validation dry-run CSVs; strict mypy, ruff and 294 tests pass.
+(2) **Downloads approved for a local build only:** `python:3.12-slim`, `node:22-alpine` and
+`nginx:stable-alpine` from Docker Hub, PyPI packages (`uv` and the locked packages without the dev group) and
+npm packages, with a 10 GiB free-disk floor and no pruning. (3) Only `compose.app.yaml` (own project
+`pmrs-app` and volume) was built and run; the development database `pmrs` was not connected to.
+
+Results (details in `docs/hosting-gate.md` and `BUILD_LOG.md`): both images built; the seed in containers gave
+610 users, 9,742 movies, 100,836 ratings and verified; an 11-check round trip passed. Under a 512 MB limit,
+0.1 CPU and swap off, the API used about 190 MiB at start-up and 250 MiB after normal use, took about 3.7-4
+minutes to start, and was **OOM-killed by 8 simultaneous register+login requests** (64 MiB per Argon2id hash);
+2, 3 and 4 at once peaked at 318, 382 and 447 MiB. These are local estimates, not evidence about Render. They do
+not change the verdict: cloud deployment stays NOT approved, and a public API would need a cap on concurrent
+password hashing (Phase 6B, not approved).
+
+Base-image digests recorded at pull: python:3.12-slim `sha256:5e2bdb1b0d54...13a4fa5b`, node:22-alpine
+`sha256:1314fb30ec37...88481a`, nginx:stable-alpine `sha256:583b7f2fce1c...19c311` (full values in the build
+log). The build used the moving tags, not these digests.

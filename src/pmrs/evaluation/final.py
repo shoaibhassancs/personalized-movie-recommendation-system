@@ -14,11 +14,12 @@ import argparse
 import json
 import time
 from pathlib import Path
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 import pandas as pd
-import plotly.graph_objects as go  # type: ignore[import-untyped]
-from plotly.subplots import make_subplots  # type: ignore[import-untyped]
+
+if TYPE_CHECKING:  # plotly is a dev-only dependency: imported where charts are drawn
+    import plotly.graph_objects as go  # type: ignore[import-untyped]
 
 from pmrs.data import load_movielens
 from pmrs.evaluation.harness import (
@@ -100,8 +101,11 @@ def _bars(frame: pd.DataFrame, value: str, low: str, high: str) -> dict[str, Any
 
 def make_charts(
     summary: pd.DataFrame, comparisons: pd.DataFrame, coverage: pd.DataFrame
-) -> dict[str, go.Figure]:
+) -> "dict[str, go.Figure]":
     """Five figures; every number plotted is a row of the saved CSV files."""
+    import plotly.graph_objects as go
+    from plotly.subplots import make_subplots  # type: ignore[import-untyped]
+
     note = "95% bootstrap intervals over users (sampling noise only)"
     figures: dict[str, go.Figure] = {}
 
@@ -207,7 +211,7 @@ def make_charts(
     return figures
 
 
-def write_charts(figures: dict[str, go.Figure], folder: Path) -> list[str]:
+def write_charts(figures: "dict[str, go.Figure]", folder: Path) -> list[str]:
     charts = folder / "charts"
     charts.mkdir(parents=True, exist_ok=True)
     names = []
